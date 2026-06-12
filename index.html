@@ -114,13 +114,13 @@
 
         const ROUNDS = ['r32', 'r16', 'qf', 'sf', 'final'];
 
-        // Dynamically shrink the gaps to match the current round in view!
+        // Increased height for SF and Final so they don't squish or clip!
         window.ROUND_HEIGHTS = {
             'r32': 1800,
             'r16': 1400,
             'qf': 1100,
-            'sf': 850,
-            'final': 700
+            'sf': 950,
+            'final': 950
         };
 
         // App State
@@ -334,12 +334,10 @@
 
                 window.updateBracketHeight(roundId);
 
-                // Ensure it vertically centers around the new height
-                const targetHeight = window.ROUND_HEIGHTS[roundId] || 1800;
+                // Auto-center horizontally, but ALWAYS snap to the top vertically
                 const scrollLeft = col.offsetLeft - (carousel.clientWidth / 2) + (col.clientWidth / 2);
-                const scrollTop = (targetHeight / 2) - (carousel.clientHeight / 2);
 
-                carousel.scrollTo({ left: scrollLeft, top: Math.max(0, scrollTop), behavior: 'smooth' });
+                carousel.scrollTo({ left: scrollLeft, top: 0, behavior: 'smooth' });
 
                 document.querySelectorAll('.round-tab').forEach(el => {
                     el.classList.remove('bg-blue-600', 'text-white');
@@ -380,6 +378,9 @@
                     currentActiveTab = closestRound;
 
                     window.updateBracketHeight(closestRound);
+
+                    // Ensure vertical scroll smoothly resets to top when swapping tabs via horizontal swipe
+                    carousel.scrollTo({ top: 0, behavior: 'smooth' });
 
                     document.querySelectorAll('.round-tab').forEach(el => {
                         el.classList.remove('bg-blue-600', 'text-white');
@@ -436,8 +437,7 @@
                 return `<div class="w-full flex-1 flex flex-col justify-center py-1 sm:py-2 min-h-0 relative">${renderNewMatchCard(m, roundId, i)}</div>`;
             }).join('');
 
-            // overflow-hidden prevents squished elements from expanding container height!
-            return `<div id="col-${roundId}" class="w-[85vw] sm:w-80 shrink-0 snap-center h-full flex flex-col px-2 overflow-hidden">${matchesHtml}</div>`;
+            return `<div id="col-${roundId}" class="w-[85vw] sm:w-80 shrink-0 snap-center h-full flex flex-col px-2">${matchesHtml}</div>`;
         };
 
         const renderConnector = (count) => {
@@ -449,7 +449,7 @@
                         <div class="absolute top-1/2 w-1/2 bracket-line-t transition-colors right-0"></div>
                     </div>`;
             }
-            return `<div class="w-8 sm:w-12 flex flex-col shrink-0 h-full overflow-hidden">${forksHtml}</div>`;
+            return `<div class="w-8 sm:w-12 flex flex-col shrink-0 h-full">${forksHtml}</div>`;
         }
 
         const renderFinalColumn = () => {
@@ -483,16 +483,19 @@
                     </div>
                 </div>` : '';
 
+            // Using my-auto in a flex-col so that the contents perfectly hit the center dynamically without overflow-hidden clipping them
             return `
-                <div id="col-final" class="w-[85vw] sm:w-96 shrink-0 snap-center h-full flex flex-col justify-center items-center px-4 relative overflow-hidden">
-                    ${championHtml}
-                    <div class="w-full">${finalMatchHtml}</div>
-                    <div class="flex justify-center items-center my-4 sm:my-6 z-10">
-                        <div class="text-[6rem] sm:text-[7rem] drop-shadow-[0_0_30px_rgba(234,179,8,0.4)] cursor-default select-none">🏆</div>
+                <div id="col-final" class="w-[85vw] sm:w-96 shrink-0 snap-center h-full flex flex-col px-4 relative">
+                    <div class="my-auto w-full flex flex-col items-center py-8">
+                        ${championHtml}
+                        <div class="w-full">${finalMatchHtml}</div>
+                        <div class="flex justify-center items-center my-4 sm:my-6 z-10">
+                            <div class="text-[6rem] sm:text-[7rem] drop-shadow-[0_0_30px_rgba(234,179,8,0.4)] cursor-default select-none">🏆</div>
+                        </div>
+                        <div class="w-full">${bronzeMatchHtml}</div>
+                        <h2 class="text-xs font-bold mt-5 tracking-[0.2em] text-orange-400 uppercase text-center w-full">Bronze Match</h2>
+                        ${bronzeHtml}
                     </div>
-                    <div class="w-full">${bronzeMatchHtml}</div>
-                    <h2 class="text-xs font-bold mt-5 tracking-[0.2em] text-orange-400 uppercase text-center w-full">Bronze Match</h2>
-                    ${bronzeHtml}
                 </div>`;
         }
 
