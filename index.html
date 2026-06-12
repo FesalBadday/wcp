@@ -331,23 +331,11 @@
             const col = document.getElementById(`col-${roundId}`);
             if (carousel && col) {
                 currentActiveTab = roundId;
-
                 window.updateBracketHeight(roundId);
 
                 // Auto-center horizontally, but ALWAYS snap to the top vertically
                 const scrollLeft = col.offsetLeft - (carousel.clientWidth / 2) + (col.clientWidth / 2);
-
                 carousel.scrollTo({ left: scrollLeft, top: 0, behavior: 'smooth' });
-
-                document.querySelectorAll('.round-tab').forEach(el => {
-                    el.classList.remove('bg-blue-600', 'text-white');
-                    el.classList.add('bg-slate-800', 'text-slate-400');
-                });
-                const activeTab = document.getElementById(`tab-${roundId}`);
-                if (activeTab) {
-                    activeTab.classList.remove('bg-slate-800', 'text-slate-400');
-                    activeTab.classList.add('bg-blue-600', 'text-white');
-                }
             }
         };
 
@@ -379,18 +367,8 @@
 
                     window.updateBracketHeight(closestRound);
 
-                    // Ensure vertical scroll smoothly resets to top when swapping tabs via horizontal swipe
+                    // Ensure vertical scroll smoothly resets to top when swapping rounds via horizontal swipe
                     carousel.scrollTo({ top: 0, behavior: 'smooth' });
-
-                    document.querySelectorAll('.round-tab').forEach(el => {
-                        el.classList.remove('bg-blue-600', 'text-white');
-                        el.classList.add('bg-slate-800', 'text-slate-400');
-                    });
-                    const activeTab = document.getElementById(`tab-${closestRound}`);
-                    if (activeTab) {
-                        activeTab.classList.remove('bg-slate-800', 'text-slate-400');
-                        activeTab.classList.add('bg-blue-600', 'text-white');
-                    }
 
                     clearTimeout(saveTimeout);
                     saveTimeout = setTimeout(saveStateToStorage, 300);
@@ -434,22 +412,22 @@
 
         const renderVerticalMatchColumn = (roundId, matchArray, count) => {
             const matchesHtml = matchArray.slice(0, count).map((m, i) => {
-                return `<div class="w-full flex-1 flex flex-col justify-center py-1 sm:py-2 min-h-0 relative">${renderNewMatchCard(m, roundId, i)}</div>`;
+                return `<div class="w-full flex-1 flex flex-col justify-center py-1 sm:py-2 min-h-0 relative transition-all duration-500 ease-in-out">${renderNewMatchCard(m, roundId, i)}</div>`;
             }).join('');
 
-            return `<div id="col-${roundId}" class="w-[85vw] sm:w-80 shrink-0 snap-center h-full flex flex-col px-2">${matchesHtml}</div>`;
+            return `<div id="col-${roundId}" class="w-[85vw] sm:w-80 shrink-0 snap-center h-full flex flex-col px-2 transition-all duration-500 ease-in-out">${matchesHtml}</div>`;
         };
 
         const renderConnector = (count) => {
             let forksHtml = '';
             for (let i = 0; i < count; i++) {
                 forksHtml += `
-                    <div class="flex-1 relative w-full group min-h-0">
+                    <div class="flex-1 relative w-full group min-h-0 transition-all duration-500 ease-in-out">
                         <div class="absolute top-[25%] bottom-[25%] w-1/2 bracket-line-r bracket-line-t bracket-line-b transition-colors left-0 rounded-r-xl"></div>
                         <div class="absolute top-1/2 w-1/2 bracket-line-t transition-colors right-0"></div>
                     </div>`;
             }
-            return `<div class="w-8 sm:w-12 flex flex-col shrink-0 h-full">${forksHtml}</div>`;
+            return `<div class="w-8 sm:w-12 flex flex-col shrink-0 h-full transition-all duration-500 ease-in-out">${forksHtml}</div>`;
         }
 
         const renderFinalColumn = () => {
@@ -460,20 +438,20 @@
             const bronzeWinner = bronzeMatch.winner ? TEAMS[bronzeMatch.winner.toUpperCase()] : null;
 
             let championHtml = winner ? `
-                <div class="w-full mb-6 z-10">
+                <div class="w-full mb-6 z-10 transition-all duration-500 ease-in-out">
                     <div class="bg-gradient-to-b from-slate-900 to-slate-950 border border-yellow-500/30 rounded-2xl p-6 text-center shadow-glow-yellow relative overflow-hidden w-full">
                         <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-yellow-500/10 to-transparent"></div>
                         <h2 class="text-xs font-bold mb-2 tracking-[0.3em] text-yellow-400 uppercase relative z-10">World Champions</h2>
                         <img src="https://flagcdn.com/w160/${winner.code}.png" class="w-32 h-20 mx-auto mb-4 rounded-lg shadow-md border-2 border-yellow-500/40 object-cover relative z-10" alt="Champion Flag" />
                         <h1 class="text-2xl font-black text-white relative z-10">${winner.name}</h1>
                     </div>
-                </div>` : `<h2 class="text-xl font-black text-slate-500 uppercase tracking-[0.2em] text-center w-full mb-6">World Champions</h2>`;
+                </div>` : `<h2 class="text-xl font-black text-slate-500 uppercase tracking-[0.2em] text-center w-full mb-6 transition-all duration-500 ease-in-out">World Champions</h2>`;
 
             const finalMatchHtml = renderNewMatchCard(finalMatch, 'final', 0);
             const bronzeMatchHtml = renderNewMatchCard(bronzeMatch, 'bronze', 0);
 
             let bronzeHtml = bronzeWinner ? `
-                <div class="w-full mt-6 z-10">
+                <div class="w-full mt-6 z-10 transition-all duration-500 ease-in-out">
                     <div class="bg-slate-900/80 border border-orange-700/30 rounded-xl p-4 text-center shadow-lg relative overflow-hidden w-full">
                          <h2 class="text-[0.65rem] font-bold mb-3 tracking-[0.2em] text-orange-400 uppercase relative z-10">Bronze Winner</h2>
                          <div class="flex items-center justify-center space-x-4">
@@ -485,15 +463,15 @@
 
             // Using my-auto in a flex-col so that the contents perfectly hit the center dynamically without overflow-hidden clipping them
             return `
-                <div id="col-final" class="w-[85vw] sm:w-96 shrink-0 snap-center h-full flex flex-col px-4 relative">
-                    <div class="my-auto w-full flex flex-col items-center py-8">
+                <div id="col-final" class="w-[85vw] sm:w-96 shrink-0 snap-center h-full flex flex-col px-4 relative transition-all duration-500 ease-in-out">
+                    <div class="my-auto w-full flex flex-col items-center py-8 transition-all duration-500 ease-in-out">
                         ${championHtml}
-                        <div class="w-full">${finalMatchHtml}</div>
-                        <div class="flex justify-center items-center my-4 sm:my-6 z-10">
+                        <div class="w-full transition-all duration-500 ease-in-out">${finalMatchHtml}</div>
+                        <div class="flex justify-center items-center my-4 sm:my-6 z-10 transition-all duration-500 ease-in-out">
                             <div class="text-[6rem] sm:text-[7rem] drop-shadow-[0_0_30px_rgba(234,179,8,0.4)] cursor-default select-none">🏆</div>
                         </div>
-                        <div class="w-full">${bronzeMatchHtml}</div>
-                        <h2 class="text-xs font-bold mt-5 tracking-[0.2em] text-orange-400 uppercase text-center w-full">Bronze Match</h2>
+                        <div class="w-full transition-all duration-500 ease-in-out">${bronzeMatchHtml}</div>
+                        <h2 class="text-xs font-bold mt-5 tracking-[0.2em] text-orange-400 uppercase text-center w-full transition-all duration-500 ease-in-out">Bronze Match</h2>
                         ${bronzeHtml}
                     </div>
                 </div>`;
@@ -603,23 +581,13 @@
             }
 
             else if (state.stage === 'knockout' && state.bracket) {
-                const activeTabClass = (tab) => currentActiveTab === tab ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700';
                 const activeHeight = window.ROUND_HEIGHTS[currentActiveTab] || 1800;
 
                 container.innerHTML = `
                     <div class="flex flex-col h-full w-full relative overflow-hidden bg-slate-950">
-                        <!-- Sticky Tabs Nav -->
-                        <div class="flex-shrink-0 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 flex overflow-x-auto px-4 py-3 space-x-3 custom-scrollbar z-30 shadow-md">
-                            <button id="tab-r32" onclick="window.scrollToRound('r32')" class="round-tab px-5 py-2.5 rounded-full ${activeTabClass('r32')} font-semibold text-sm whitespace-nowrap transition-colors">Round of 32</button>
-                            <button id="tab-r16" onclick="window.scrollToRound('r16')" class="round-tab px-5 py-2.5 rounded-full ${activeTabClass('r16')} font-semibold text-sm whitespace-nowrap transition-colors">Round of 16</button>
-                            <button id="tab-qf" onclick="window.scrollToRound('qf')" class="round-tab px-5 py-2.5 rounded-full ${activeTabClass('qf')} font-semibold text-sm whitespace-nowrap transition-colors">Quarter-final</button>
-                            <button id="tab-sf" onclick="window.scrollToRound('sf')" class="round-tab px-5 py-2.5 rounded-full ${activeTabClass('sf')} font-semibold text-sm whitespace-nowrap transition-colors">Semi-final</button>
-                            <button id="tab-final" onclick="window.scrollToRound('final')" class="round-tab px-5 py-2.5 rounded-full ${activeTabClass('final')} font-semibold text-sm whitespace-nowrap transition-colors">Final</button>
-                        </div>
-
                         <!-- Horizontal & Vertical Scrollable Tree -->
                         <div id="bracket-scroll-container" class="flex-grow overflow-auto custom-scrollbar snap-x snap-mandatory w-full h-full relative">
-                            <div class="flex flex-col min-h-full w-max mx-auto">
+                            <div class="flex flex-col min-h-full w-max mx-auto transition-all duration-500 ease-in-out">
                                 <!-- The wrapper transitions height dynamically, auto-centering horizontally and pulling gaps tight -->
                                 <div id="bracket-tree-wrapper" class="flex min-w-max items-stretch px-4 py-8 transition-all duration-500 ease-in-out my-auto" style="height: ${activeHeight}px;">
                                     ${renderVerticalMatchColumn('r32', state.bracket.r32, 16)}
