@@ -27,18 +27,17 @@
     <style>
         /* Modern Clean Scrollbars */
         .custom-scrollbar::-webkit-scrollbar {
-            height: 8px;
-            width: 8px;
+            height: 6px;
+            width: 6px;
         }
 
         .custom-scrollbar::-webkit-scrollbar-track {
-            background: #0f172a;
-            border-radius: 8px;
+            background: transparent;
         }
 
         .custom-scrollbar::-webkit-scrollbar-thumb {
             background: #334155;
-            border-radius: 8px;
+            border-radius: 6px;
         }
 
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
@@ -49,8 +48,10 @@
             background-color: #020617;
             color: white;
             font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            overflow: hidden;
         }
 
+        /* Connector Line Styles */
         .bracket-line-r {
             border-right: 2px solid #475569;
         }
@@ -72,7 +73,6 @@
         .group:hover .bracket-line-t,
         .group:hover .bracket-line-b {
             border-color: #3b82f6;
-            /* blue-500 */
         }
     </style>
 </head>
@@ -80,15 +80,15 @@
 <body class="selection:bg-blue-500 selection:text-white antialiased bg-slate-950">
 
     <!-- Main Content Container -->
-    <main id="app-container" class="min-h-screen">
-        <div class="flex items-center justify-center h-screen">
+    <main id="app-container" class="h-screen w-full flex flex-col">
+        <div class="flex items-center justify-center h-full">
             <div class="animate-spin text-5xl">⚽</div>
         </div>
     </main>
 
     <!-- App Logic -->
     <script>
-        const STORAGE_KEY = 'fifa-world-cup-2026-data-v2';
+        const STORAGE_KEY = 'fifa-world-cup-2026-data-v5';
 
         // Tournament Data
         const TEAMS = {
@@ -114,16 +114,28 @@
 
         const ROUNDS = ['r32', 'r16', 'qf', 'sf', 'final'];
 
+        // Dynamically shrink the gaps to match the current round in view!
+        window.ROUND_HEIGHTS = {
+            'r32': 1800,
+            'r16': 1400,
+            'qf': 1100,
+            'sf': 850,
+            'final': 700
+        };
+
         // App State
         let state = {
             stage: 'groups',
             groupSelections: {},
             thirdPlaces: [],
-            bracket: null,
-            zoomScale: 1 // Track zoom memory globally
+            bracket: null
         };
 
         let saveTimeout = null;
+        let currentActiveTab = 'r32';
+        let groupScrollMemY = 0;
+        let bracketScrollMemX = 0;
+        let bracketScrollMemY = 0;
         let intentionalScrollReset = false;
 
         function saveStateToStorage() {
@@ -133,7 +145,7 @@
                     thirdPlaces: state.thirdPlaces,
                     bracket: state.bracket,
                     stage: state.stage,
-                    zoomScale: state.zoomScale
+                    currentActiveTab: currentActiveTab
                 }));
             } catch (e) { console.error("Save failed", e); }
         }
@@ -141,7 +153,6 @@
         function setState(newState) {
             state = { ...state, ...newState };
             renderApp();
-
             clearTimeout(saveTimeout);
             saveTimeout = setTimeout(saveStateToStorage, 300);
         }
@@ -155,18 +166,26 @@
                     state.thirdPlaces = parsed.thirdPlaces || [];
                     state.bracket = parsed.bracket || null;
                     state.stage = parsed.stage || 'groups';
-                    state.zoomScale = parsed.zoomScale || 1;
+                    currentActiveTab = parsed.currentActiveTab || 'r32';
                 }
             } catch (e) { console.error("Load failed", e); }
             renderApp();
         }
+
+        window.updateBracketHeight = (roundId) => {
+            const wrapper = document.getElementById('bracket-tree-wrapper');
+            if (wrapper) {
+                const targetHeight = window.ROUND_HEIGHTS[roundId] || 1800;
+                wrapper.style.height = `${targetHeight}px`;
+            }
+        };
 
         // Actions
         window.handleGroupTeamClick = (groupName, teamId) => {
             const current = state.groupSelections[groupName] || [];
             let newSelection;
             if (current.includes(teamId)) newSelection = current.filter(t => t !== teamId);
-            else if (current.length < 3) newSelection = [...current, teamId]; // Now allows 3 selections (1st, 2nd, 3rd)
+            else if (current.length < 3) newSelection = [...current, teamId];
             else return;
             setState({ groupSelections: { ...state.groupSelections, [groupName]: newSelection } });
         };
@@ -181,18 +200,21 @@
         };
 
         window.proceedToThirds = () => {
+            groupScrollMemY = 0;
             intentionalScrollReset = true;
             setState({ stage: 'thirds' });
         };
 
         window.generateBracket = () => {
             intentionalScrollReset = true;
+            currentActiveTab = 'r32';
+            bracketScrollMemX = 0;
+            bracketScrollMemY = 0;
+
             const firsts = Object.keys(GROUPS).map(g => state.groupSelections[g]?.[0]);
             const seconds = Object.keys(GROUPS).map(g => state.groupSelections[g]?.[1]);
 
-            // Uniquely mapping 12 firsts, 12 seconds, and 8 thirds = exactly 32 distinct teams mapped to 16 matches
             const r32 = [
-                // Left Side (8 matches)
                 { t1: firsts[0], t2: state.thirdPlaces[0], winner: null },
                 { t1: seconds[0], t2: seconds[1], winner: null },
                 { t1: firsts[1], t2: state.thirdPlaces[1], winner: null },
@@ -201,7 +223,6 @@
                 { t1: seconds[4], t2: seconds[5], winner: null },
                 { t1: firsts[3], t2: state.thirdPlaces[3], winner: null },
                 { t1: firsts[4], t2: seconds[6], winner: null },
-                // Right Side (8 matches)
                 { t1: firsts[5], t2: state.thirdPlaces[4], winner: null },
                 { t1: firsts[6], t2: seconds[7], winner: null },
                 { t1: firsts[7], t2: state.thirdPlaces[5], winner: null },
@@ -218,9 +239,9 @@
                 qf: Array.from({ length: 4 }, () => ({ t1: null, t2: null, winner: null })),
                 sf: Array.from({ length: 2 }, () => ({ t1: null, t2: null, winner: null })),
                 final: Array.from({ length: 1 }, () => ({ t1: null, t2: null, winner: null })),
-                bronze: Array.from({ length: 1 }, () => ({ t1: null, t2: null, winner: null })) // Add Bronze match
+                bronze: Array.from({ length: 1 }, () => ({ t1: null, t2: null, winner: null }))
             };
-            setState({ bracket, stage: 'knockout', zoomScale: 1 });
+            setState({ bracket, stage: 'knockout' });
         };
 
         const clearDownstream = (bracketMut, fromRound, matchIndex) => {
@@ -230,7 +251,6 @@
                 const r = ROUNDS[i];
                 bracketMut[r][currIdx].winner = null;
 
-                // Clear Final/Bronze
                 if (r === 'final') bracketMut.final[0].winner = null;
                 if (r === 'sf') bracketMut.bronze[0] = { t1: null, t2: null, winner: null };
 
@@ -248,20 +268,11 @@
             var duration = 4 * 1000;
             var animationEnd = Date.now() + duration;
             var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 99999 };
-
-            function randomInRange(min, max) {
-                return Math.random() * (max - min) + min;
-            }
-
+            function randomInRange(min, max) { return Math.random() * (max - min) + min; }
             var interval = setInterval(function () {
                 var timeLeft = animationEnd - Date.now();
-
-                if (timeLeft <= 0) {
-                    return clearInterval(interval);
-                }
-
+                if (timeLeft <= 0) return clearInterval(interval);
                 var particleCount = 50 * (timeLeft / duration);
-                // since particles fall down, start a bit higher than random
                 confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } });
                 confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } });
             }, 250);
@@ -270,11 +281,8 @@
         window.advanceWinner = (round, matchIndex, teamId) => {
             const nextBracket = JSON.parse(JSON.stringify(state.bracket));
             const currentMatch = nextBracket[round][matchIndex];
-
-            // Get the old winner before we update it
             const oldWinner = state.bracket[round][matchIndex].winner;
 
-            // Don't advance if the team is not set
             if (!currentMatch.t1 || !currentMatch.t2) return;
 
             nextBracket[round][matchIndex].winner = teamId;
@@ -299,7 +307,6 @@
                 }
             }
 
-            // Special handling for Semi-Finals to populate Bronze match
             if (round === 'sf') {
                 const sf1 = nextBracket.sf[0];
                 const sf2 = nextBracket.sf[1];
@@ -308,12 +315,10 @@
                     const loser2 = sf2.winner === sf2.t1 ? sf2.t2 : sf2.t1;
                     nextBracket.bronze[0] = { t1: loser1, t2: loser2, winner: null };
                 } else {
-                    // If a SF winner is un-picked, clear the bronze match
                     nextBracket.bronze[0] = { t1: null, t2: null, winner: null };
                 }
             }
 
-            // Trigger confetti if a new final winner is picked
             if (round === 'final' && oldWinner !== teamId) {
                 setTimeout(() => window.triggerConfetti(), 100);
             }
@@ -321,78 +326,74 @@
             setState({ bracket: nextBracket });
         };
 
-        // Highly optimized direct DOM zoom function to prevent sluggish re-renders
-        window.updateZoom = (newScale) => {
-            newScale = Math.min(Math.max(0.3, newScale), 2.5); // Clamp scale limits
-            state.zoomScale = newScale;
+        window.scrollToRound = (roundId) => {
+            const carousel = document.getElementById('bracket-scroll-container');
+            const col = document.getElementById(`col-${roundId}`);
+            if (carousel && col) {
+                currentActiveTab = roundId;
 
-            const wrapper = document.getElementById('bracket-zoom-wrapper');
-            const sizingBox = document.getElementById('bracket-sizing-box');
+                window.updateBracketHeight(roundId);
 
-            if (wrapper && sizingBox) {
-                wrapper.style.transform = `scale(${newScale})`;
+                // Ensure it vertically centers around the new height
+                const targetHeight = window.ROUND_HEIGHTS[roundId] || 1800;
+                const scrollLeft = col.offsetLeft - (carousel.clientWidth / 2) + (col.clientWidth / 2);
+                const scrollTop = (targetHeight / 2) - (carousel.clientHeight / 2);
 
-                // Keep the scrollbar boundaries tightly matched to the scaled content
-                let origWidth = wrapper.getAttribute('data-orig-width');
-                if (!origWidth) {
-                    const oldTransform = wrapper.style.transform;
-                    wrapper.style.transform = 'scale(1)';
-                    origWidth = wrapper.scrollWidth;
-                    wrapper.setAttribute('data-orig-width', origWidth);
-                    wrapper.style.transform = oldTransform;
+                carousel.scrollTo({ left: scrollLeft, top: Math.max(0, scrollTop), behavior: 'smooth' });
+
+                document.querySelectorAll('.round-tab').forEach(el => {
+                    el.classList.remove('bg-blue-600', 'text-white');
+                    el.classList.add('bg-slate-800', 'text-slate-400');
+                });
+                const activeTab = document.getElementById(`tab-${roundId}`);
+                if (activeTab) {
+                    activeTab.classList.remove('bg-slate-800', 'text-slate-400');
+                    activeTab.classList.add('bg-blue-600', 'text-white');
                 }
-
-                sizingBox.style.width = `${origWidth * newScale}px`;
-                sizingBox.style.height = `${1300 * newScale}px`;
             }
-
-            // Debounce saving the scale so it doesn't hurt performance while pinching
-            clearTimeout(saveTimeout);
-            saveTimeout = setTimeout(saveStateToStorage, 300);
         };
 
-        // Mobile Pinch & Desktop Wheel Listeners
-        function bindZoomEvents() {
-            const scrollContainer = document.getElementById('bracket-scroll-container');
-            if (!scrollContainer) return;
+        function setupCarouselTracking() {
+            const carousel = document.getElementById('bracket-scroll-container');
+            if (!carousel) return;
 
-            let initialPinchDistance = null;
-            let initialZoomScale = 1;
+            carousel.addEventListener('scroll', () => {
+                const rounds = ['r32', 'r16', 'qf', 'sf', 'final'];
+                let closestRound = rounds[0];
+                let minDiff = Infinity;
 
-            // Desktop Mouse Wheel
-            scrollContainer.addEventListener('wheel', (e) => {
-                if (e.ctrlKey) {
-                    e.preventDefault();
-                    window.updateZoom(state.zoomScale - (e.deltaY * 0.003));
+                const carouselCenter = carousel.scrollLeft + (carousel.clientWidth / 2);
+
+                rounds.forEach(r => {
+                    const col = document.getElementById(`col-${r}`);
+                    if (col) {
+                        const colCenter = col.offsetLeft + (col.clientWidth / 2);
+                        const diff = Math.abs(colCenter - carouselCenter);
+                        if (diff < minDiff) {
+                            minDiff = diff;
+                            closestRound = r;
+                        }
+                    }
+                });
+
+                if (currentActiveTab !== closestRound) {
+                    currentActiveTab = closestRound;
+
+                    window.updateBracketHeight(closestRound);
+
+                    document.querySelectorAll('.round-tab').forEach(el => {
+                        el.classList.remove('bg-blue-600', 'text-white');
+                        el.classList.add('bg-slate-800', 'text-slate-400');
+                    });
+                    const activeTab = document.getElementById(`tab-${closestRound}`);
+                    if (activeTab) {
+                        activeTab.classList.remove('bg-slate-800', 'text-slate-400');
+                        activeTab.classList.add('bg-blue-600', 'text-white');
+                    }
+
+                    clearTimeout(saveTimeout);
+                    saveTimeout = setTimeout(saveStateToStorage, 300);
                 }
-            }, { passive: false });
-
-            // Mobile Two-Finger Start
-            scrollContainer.addEventListener('touchstart', (e) => {
-                if (e.touches.length === 2) {
-                    initialPinchDistance = Math.hypot(
-                        e.touches[0].clientX - e.touches[1].clientX,
-                        e.touches[0].clientY - e.touches[1].clientY
-                    );
-                    initialZoomScale = state.zoomScale;
-                }
-            }, { passive: false });
-
-            // Mobile Pinch Motion
-            scrollContainer.addEventListener('touchmove', (e) => {
-                if (e.touches.length === 2 && initialPinchDistance) {
-                    e.preventDefault(); // Prevent standard browser pinch
-                    const currentDistance = Math.hypot(
-                        e.touches[0].clientX - e.touches[1].clientX,
-                        e.touches[0].clientY - e.touches[1].clientY
-                    );
-                    const scale = initialZoomScale * (currentDistance / initialPinchDistance);
-                    window.updateZoom(scale);
-                }
-            }, { passive: false });
-
-            scrollContainer.addEventListener('touchend', (e) => {
-                if (e.touches.length < 2) initialPinchDistance = null;
             });
         }
 
@@ -404,113 +405,93 @@
 
             if (team) {
                 return `
-                    <div class="relative flex items-center px-4 h-12 cursor-pointer transition-colors ${bgClass}" onclick="window.advanceWinner('${roundId}', ${matchIndex}, '${team.code.toUpperCase()}')">
+                    <div class="relative flex items-center px-4 py-3 cursor-pointer transition-colors ${bgClass}" onclick="window.advanceWinner('${roundId}', ${matchIndex}, '${team.code.toUpperCase()}')">
                         ${indicator}
-                        <img src="https://flagcdn.com/w40/${team.code}.png" class="w-6 h-4 mr-3 rounded shadow-sm object-cover" alt="flag" />
-                        <span class="flex-1 text-sm truncate ${textClass}">${team.name}</span>
+                        <img src="https://flagcdn.com/w40/${team.code}.png" class="w-7 h-5 mr-4 rounded shadow-sm object-cover" alt="flag" />
+                        <span class="flex-1 text-[15px] truncate ${textClass}">${team.name}</span>
                     </div>`;
             } else {
                 return `
-                    <div class="relative flex items-center px-4 h-12 bg-slate-800/50">
-                        <span class="flex-1 text-sm font-medium text-slate-500">TBD</span>
+                    <div class="relative flex items-center px-4 py-3 bg-slate-800/50">
+                        <span class="flex-1 text-[15px] font-medium text-slate-500 ml-11">TBD</span>
                     </div>`;
             }
         };
 
-        // New compact match card for the new layout
         const renderNewMatchCard = (match, roundId, matchIndex) => {
             const t1 = match.t1 ? TEAMS[match.t1.toUpperCase()] : null;
             const t2 = match.t2 ? TEAMS[match.t2.toUpperCase()] : null;
             const borderClass = match.winner ? 'border-blue-500/50 shadow-glow-blue' : 'border-slate-700/50';
 
             return `
-                <div class="flex-1 flex flex-col justify-center py-2 relative w-full group">
-                    <div class="w-full bg-slate-800/80 backdrop-blur-sm border ${borderClass} rounded-lg overflow-hidden transition-all">
-                        ${renderTeamRow(t1, match.winner === match.t1, roundId, matchIndex)}
-                        <div class="h-px bg-slate-700/50 w-full"></div>
-                        ${renderTeamRow(t2, match.winner === match.t2, roundId, matchIndex)}
-                    </div>
+                <div class="w-full bg-slate-800/80 backdrop-blur-sm border ${borderClass} rounded-xl overflow-hidden transition-all shadow-md group">
+                    ${renderTeamRow(t1, match.winner === match.t1, roundId, matchIndex)}
+                    <div class="h-px bg-slate-700/50 w-full"></div>
+                    ${renderTeamRow(t2, match.winner === match.t2, roundId, matchIndex)}
                 </div>`;
         };
 
-        // Render a vertical column of matches
-        const renderVerticalMatchColumn = (roundId, matchArray, startIndex, count) => {
-            const matchesHtml = matchArray.slice(startIndex, startIndex + count).map((m, i) => renderNewMatchCard(m, roundId, startIndex + i)).join('');
-            return `<div class="flex flex-col shrink-0 w-52 px-1" style="height: 100%;">${matchesHtml}</div>`;
+        const renderVerticalMatchColumn = (roundId, matchArray, count) => {
+            const matchesHtml = matchArray.slice(0, count).map((m, i) => {
+                return `<div class="w-full flex-1 flex flex-col justify-center py-1 sm:py-2 min-h-0 relative">${renderNewMatchCard(m, roundId, i)}</div>`;
+            }).join('');
+
+            // overflow-hidden prevents squished elements from expanding container height!
+            return `<div id="col-${roundId}" class="w-[85vw] sm:w-80 shrink-0 snap-center h-full flex flex-col px-2 overflow-hidden">${matchesHtml}</div>`;
         };
 
-        // Render connectors
-        const renderConnector = (type, count) => {
+        const renderConnector = (count) => {
             let forksHtml = '';
             for (let i = 0; i < count; i++) {
-                // min-height added to prevent empty flex item collapsing in Safari
                 forksHtml += `
-                    <div class="flex-1 relative w-full group" style="min-height: 1px;">
-                        <div class="absolute top-[25%] bottom-[25%] w-1/2 bracket-line-${type === 'right' ? 'r' : 'l'} bracket-line-t bracket-line-b transition-colors ${type === 'right' ? 'left-0 rounded-r-xl' : 'right-0 rounded-l-xl'}"></div>
-                        <div class="absolute top-1/2 w-1/2 bracket-line-t transition-colors ${type === 'right' ? 'right-0' : 'left-0'}"></div>
+                    <div class="flex-1 relative w-full group min-h-0">
+                        <div class="absolute top-[25%] bottom-[25%] w-1/2 bracket-line-r bracket-line-t bracket-line-b transition-colors left-0 rounded-r-xl"></div>
+                        <div class="absolute top-1/2 w-1/2 bracket-line-t transition-colors right-0"></div>
                     </div>`;
             }
-            return `<div class="w-6 flex flex-col shrink-0" style="height: 100%;">${forksHtml}</div>`;
+            return `<div class="w-8 sm:w-12 flex flex-col shrink-0 h-full overflow-hidden">${forksHtml}</div>`;
         }
 
-        const renderCenterStage = () => {
+        const renderFinalColumn = () => {
             const finalMatch = state.bracket.final[0];
             const bronzeMatch = state.bracket.bronze[0];
 
             const winner = finalMatch.winner ? TEAMS[finalMatch.winner.toUpperCase()] : null;
             const bronzeWinner = bronzeMatch.winner ? TEAMS[bronzeMatch.winner.toUpperCase()] : null;
 
-            let championHtml = '';
-            if (winner) {
-                championHtml = `
-                    <div class="flex flex-col items-center justify-center mb-8 z-10">
-                        <div class="bg-gradient-to-b from-slate-900 to-slate-950 border border-yellow-500/30 rounded-2xl p-6 text-center shadow-glow-yellow relative overflow-hidden w-64">
-                            <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-yellow-500/10 to-transparent"></div>
-                            <h2 class="text-xs font-bold mb-2 tracking-[0.3em] text-yellow-400 uppercase relative z-10">World Champions</h2>
-                            <img src="https://flagcdn.com/w160/${winner.code}.png" class="w-28 h-20 mx-auto mb-4 rounded-lg shadow-md border-2 border-yellow-500/40 object-cover relative z-10" alt="Champion Flag" />
-                            <h1 class="text-2xl font-black text-white relative z-10">${winner.name}</h1>
-                        </div>
-                    </div>`;
-            } else {
-                championHtml = `<h2 class="text-2xl font-black text-slate-500 uppercase tracking-[0.2em] text-center mb-8">World Champions</h2>`
-            }
-
-            const trophyHtml = `
-                <div class="flex justify-center items-center my-6 z-10">
-                     <!-- Placeholder for Trophy Image - Using a large emoji for now -->
-                    <div class="text-[10rem] drop-shadow-[0_0_30px_rgba(234,179,8,0.4)] cursor-default select-none">🏆</div>
-                </div>
-            `;
+            let championHtml = winner ? `
+                <div class="w-full mb-6 z-10">
+                    <div class="bg-gradient-to-b from-slate-900 to-slate-950 border border-yellow-500/30 rounded-2xl p-6 text-center shadow-glow-yellow relative overflow-hidden w-full">
+                        <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-yellow-500/10 to-transparent"></div>
+                        <h2 class="text-xs font-bold mb-2 tracking-[0.3em] text-yellow-400 uppercase relative z-10">World Champions</h2>
+                        <img src="https://flagcdn.com/w160/${winner.code}.png" class="w-32 h-20 mx-auto mb-4 rounded-lg shadow-md border-2 border-yellow-500/40 object-cover relative z-10" alt="Champion Flag" />
+                        <h1 class="text-2xl font-black text-white relative z-10">${winner.name}</h1>
+                    </div>
+                </div>` : `<h2 class="text-xl font-black text-slate-500 uppercase tracking-[0.2em] text-center w-full mb-6">World Champions</h2>`;
 
             const finalMatchHtml = renderNewMatchCard(finalMatch, 'final', 0);
-
-            let bronzeHtml = '';
-            if (bronzeWinner) {
-                bronzeHtml = `
-                    <div class="flex flex-col items-center justify-center mt-8 z-10">
-                        <div class="bg-slate-900/80 border border-orange-700/30 rounded-xl p-4 text-center shadow-lg relative overflow-hidden w-52">
-                             <h2 class="text-[0.6rem] font-bold mb-2 tracking-[0.2em] text-orange-400 uppercase relative z-10">Bronze Winner</h2>
-                             <div class="flex items-center justify-center space-x-3">
-                                <img src="https://flagcdn.com/w40/${bronzeWinner.code}.png" class="w-8 h-6 rounded shadow-sm border border-orange-700/40 object-cover relative z-10" alt="Bronze Flag" />
-                                <h1 class="text-lg font-bold text-white relative z-10">${bronzeWinner.name}</h1>
-                             </div>
-                        </div>
-                    </div>`;
-            }
-
             const bronzeMatchHtml = renderNewMatchCard(bronzeMatch, 'bronze', 0);
 
-            return `
-                <div class="flex flex-col shrink-0 w-80 px-4 justify-center relative" style="height: 100%;">
-                    <!-- Connecting lines for final -->
-                    <div class="absolute top-1/2 left-0 w-4 bracket-line-t"></div>
-                    <div class="absolute top-1/2 right-0 w-4 bracket-line-t"></div>
+            let bronzeHtml = bronzeWinner ? `
+                <div class="w-full mt-6 z-10">
+                    <div class="bg-slate-900/80 border border-orange-700/30 rounded-xl p-4 text-center shadow-lg relative overflow-hidden w-full">
+                         <h2 class="text-[0.65rem] font-bold mb-3 tracking-[0.2em] text-orange-400 uppercase relative z-10">Bronze Winner</h2>
+                         <div class="flex items-center justify-center space-x-4">
+                            <img src="https://flagcdn.com/w40/${bronzeWinner.code}.png" class="w-10 h-7 rounded shadow-sm border border-orange-700/40 object-cover relative z-10" alt="Bronze Flag" />
+                            <h1 class="text-xl font-bold text-white relative z-10">${bronzeWinner.name}</h1>
+                         </div>
+                    </div>
+                </div>` : '';
 
+            return `
+                <div id="col-final" class="w-[85vw] sm:w-96 shrink-0 snap-center h-full flex flex-col justify-center items-center px-4 relative overflow-hidden">
                     ${championHtml}
-                    <div class="w-64 mx-auto">${finalMatchHtml}</div>
-                    ${trophyHtml}
-                    <div class="w-64 mx-auto">${bronzeMatchHtml}</div>
-                    <h2 class="text-xs font-bold mt-4 mb-2 tracking-[0.2em] text-orange-400 uppercase text-center">Bronze Match</h2>
+                    <div class="w-full">${finalMatchHtml}</div>
+                    <div class="flex justify-center items-center my-4 sm:my-6 z-10">
+                        <div class="text-[6rem] sm:text-[7rem] drop-shadow-[0_0_30px_rgba(234,179,8,0.4)] cursor-default select-none">🏆</div>
+                    </div>
+                    <div class="w-full">${bronzeMatchHtml}</div>
+                    <h2 class="text-xs font-bold mt-5 tracking-[0.2em] text-orange-400 uppercase text-center w-full">Bronze Match</h2>
                     ${bronzeHtml}
                 </div>`;
         }
@@ -518,22 +499,20 @@
         // Main Render Cycle
         function renderApp() {
             const container = document.getElementById('app-container');
+            const groupScrollContainerRef = document.getElementById('group-scroll-container');
+            const bracketScrollContainerRef = document.getElementById('bracket-scroll-container');
 
-            // Snapshot Scroll state before re-rendering DOM
-            let winScrollY = window.scrollY;
-            let bracketScrollX = 0;
-            let bracketScrollY = 0;
-
-            const existingScroll = document.getElementById('bracket-scroll-container');
-            if (existingScroll) {
-                bracketScrollX = existingScroll.scrollLeft;
-                bracketScrollY = existingScroll.scrollTop;
+            if (groupScrollContainerRef) { groupScrollMemY = groupScrollContainerRef.scrollTop; }
+            if (bracketScrollContainerRef) {
+                bracketScrollMemX = bracketScrollContainerRef.scrollLeft;
+                bracketScrollMemY = bracketScrollContainerRef.scrollTop;
             }
 
             if (state.stage === 'groups') {
                 const isGroupsComplete = Object.keys(GROUPS).every(g => (state.groupSelections[g] || []).length === 3);
                 let groupsHtml = `
-                    <div class="p-4 max-w-md mx-auto pt-8">
+                    <div id="group-scroll-container" class="w-full h-full overflow-y-auto custom-scrollbar p-4">
+                        <div class="max-w-md mx-auto pt-6 pb-24">
                 `;
 
                 for (const g in GROUPS) {
@@ -572,14 +551,15 @@
                         </div>
                     `;
                 }
-                groupsHtml += `</div>`;
+                groupsHtml += `</div></div>`;
                 container.innerHTML = groupsHtml;
             }
 
             else if (state.stage === 'thirds') {
                 const totalSelected = state.thirdPlaces.length;
                 let thirdsHtml = `
-                    <div class="p-4 max-w-md mx-auto pt-8">
+                    <div id="group-scroll-container" class="w-full h-full overflow-y-auto custom-scrollbar p-4">
+                        <div class="max-w-md mx-auto pt-6 pb-24">
                         
                         <div class="flex justify-between items-center mb-6 bg-slate-800/80 p-4 rounded-2xl border border-slate-700/80 shadow-sm backdrop-blur-sm">
                              <span class="font-bold text-slate-300">Selected:</span>
@@ -592,8 +572,8 @@
 
                 const availableThirds = Object.keys(GROUPS).map(g => {
                     const selected = state.groupSelections[g] || [];
-                    return selected[2]; // Specifically grab the 3rd place team from each group
-                }).filter(Boolean); // Filter out any undefined just in case
+                    return selected[2];
+                }).filter(Boolean);
 
                 availableThirds.forEach(teamId => {
                     const team = TEAMS[teamId];
@@ -614,69 +594,67 @@
                             Generate Bracket <span class="ml-2">🚀</span>
                         </button>
                     </div>
-                </div>`;
+                </div></div>`;
 
                 container.innerHTML = thirdsHtml;
             }
 
             else if (state.stage === 'knockout' && state.bracket) {
-                container.innerHTML = `
-                    <div class="w-full h-screen flex flex-col relative">
-                        <div id="bracket-scroll-container" class="relative w-full flex-grow overflow-auto custom-scrollbar">
-                            <!-- This box forces the scrollbar to resize cleanly with the scaled child -->
-                            <div id="bracket-sizing-box" class="transition-all duration-75 origin-top-left">
-                                <!-- The wrapper that actually receives the scale transform -->
-                                <div id="bracket-zoom-wrapper" class="flex min-w-max items-stretch justify-center origin-top-left transition-transform duration-75" style="height: 1300px; transform: scale(${state.zoomScale});">
-                                    <!-- Left Bracket -->
-                                    ${renderVerticalMatchColumn('r32', state.bracket.r32, 0, 8)}
-                                    ${renderConnector('right', 4)}
-                                    ${renderVerticalMatchColumn('r16', state.bracket.r16, 0, 4)}
-                                    ${renderConnector('right', 2)}
-                                    ${renderVerticalMatchColumn('qf', state.bracket.qf, 0, 2)}
-                                    ${renderConnector('right', 1)}
-                                    ${renderVerticalMatchColumn('sf', state.bracket.sf, 0, 1)}
-                                    
-                                    <!-- Center Stage -->
-                                    ${renderCenterStage()}
+                const activeTabClass = (tab) => currentActiveTab === tab ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700';
+                const activeHeight = window.ROUND_HEIGHTS[currentActiveTab] || 1800;
 
-                                    <!-- Right Bracket -->
-                                    ${renderVerticalMatchColumn('sf', state.bracket.sf, 1, 1)}
-                                    ${renderConnector('left', 1)}
-                                    ${renderVerticalMatchColumn('qf', state.bracket.qf, 2, 2)}
-                                    ${renderConnector('left', 2)}
-                                    ${renderVerticalMatchColumn('r16', state.bracket.r16, 4, 4)}
-                                    ${renderConnector('left', 4)}
-                                    ${renderVerticalMatchColumn('r32', state.bracket.r32, 8, 8)}
+                container.innerHTML = `
+                    <div class="flex flex-col h-full w-full relative overflow-hidden bg-slate-950">
+                        <!-- Sticky Tabs Nav -->
+                        <div class="flex-shrink-0 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 flex overflow-x-auto px-4 py-3 space-x-3 custom-scrollbar z-30 shadow-md">
+                            <button id="tab-r32" onclick="window.scrollToRound('r32')" class="round-tab px-5 py-2.5 rounded-full ${activeTabClass('r32')} font-semibold text-sm whitespace-nowrap transition-colors">Round of 32</button>
+                            <button id="tab-r16" onclick="window.scrollToRound('r16')" class="round-tab px-5 py-2.5 rounded-full ${activeTabClass('r16')} font-semibold text-sm whitespace-nowrap transition-colors">Round of 16</button>
+                            <button id="tab-qf" onclick="window.scrollToRound('qf')" class="round-tab px-5 py-2.5 rounded-full ${activeTabClass('qf')} font-semibold text-sm whitespace-nowrap transition-colors">Quarter-final</button>
+                            <button id="tab-sf" onclick="window.scrollToRound('sf')" class="round-tab px-5 py-2.5 rounded-full ${activeTabClass('sf')} font-semibold text-sm whitespace-nowrap transition-colors">Semi-final</button>
+                            <button id="tab-final" onclick="window.scrollToRound('final')" class="round-tab px-5 py-2.5 rounded-full ${activeTabClass('final')} font-semibold text-sm whitespace-nowrap transition-colors">Final</button>
+                        </div>
+
+                        <!-- Horizontal & Vertical Scrollable Tree -->
+                        <div id="bracket-scroll-container" class="flex-grow overflow-auto custom-scrollbar snap-x snap-mandatory w-full h-full relative">
+                            <div class="flex flex-col min-h-full w-max mx-auto">
+                                <!-- The wrapper transitions height dynamically, auto-centering horizontally and pulling gaps tight -->
+                                <div id="bracket-tree-wrapper" class="flex min-w-max items-stretch px-4 py-8 transition-all duration-500 ease-in-out my-auto" style="height: ${activeHeight}px;">
+                                    ${renderVerticalMatchColumn('r32', state.bracket.r32, 16)}
+                                    ${renderConnector(8)}
+                                    ${renderVerticalMatchColumn('r16', state.bracket.r16, 8)}
+                                    ${renderConnector(4)}
+                                    ${renderVerticalMatchColumn('qf', state.bracket.qf, 4)}
+                                    ${renderConnector(2)}
+                                    ${renderVerticalMatchColumn('sf', state.bracket.sf, 2)}
+                                    ${renderConnector(1)}
+                                    ${renderFinalColumn()}
                                 </div>
                             </div>
                         </div>
                     </div>
                 `;
+
+                setupCarouselTracking();
             }
 
-            // Restore Scroll perfectly and setup Zoom Listeners
             requestAnimationFrame(() => {
                 if (state.stage === 'knockout') {
-                    window.updateZoom(state.zoomScale || 1); // Trigger an immediate visual snap
-                    bindZoomEvents();
+                    const carousel = document.getElementById('bracket-scroll-container');
+                    if (carousel) {
+                        carousel.scrollLeft = bracketScrollMemX;
+                        carousel.scrollTop = bracketScrollMemY;
+                    }
+                } else {
+                    const groupScroll = document.getElementById('group-scroll-container');
+                    if (groupScroll) {
+                        groupScroll.scrollTop = groupScrollMemY;
+                    }
                 }
 
                 if (intentionalScrollReset) {
                     window.scrollTo(0, 0);
-                    const newScroll = document.getElementById('bracket-scroll-container');
-                    if (newScroll) {
-                        // Center the view horizontally by default when brackets generate
-                        newScroll.scrollLeft = (newScroll.scrollWidth - newScroll.clientWidth) / 2;
-                        newScroll.scrollTop = 0;
-                    }
+                    if (state.stage === 'knockout') window.scrollToRound('r32');
                     intentionalScrollReset = false;
-                } else {
-                    window.scrollTo(0, winScrollY);
-                    const newScroll = document.getElementById('bracket-scroll-container');
-                    if (newScroll) {
-                        newScroll.scrollLeft = bracketScrollX;
-                        newScroll.scrollTop = bracketScrollY;
-                    }
                 }
             });
         }
