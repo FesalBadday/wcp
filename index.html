@@ -342,7 +342,7 @@
                 return `
                     <div class="relative flex items-center px-4 py-3 cursor-pointer transition-colors ${bgClass}" onclick="window.advanceWinner('${roundId}', ${matchIndex}, '${team.code.toUpperCase()}')">
                         ${indicator}
-                        <img src="https://flagcdn.com/w40/${team.code}.png" class="w-7 h-5 mr-4 rounded shadow-sm object-cover" alt="flag" />
+                        <img src="https://flagcdn.com/w40/${team.code}.webp" class="w-7 h-5 mr-4 rounded shadow-sm object-cover" alt="flag" />
                         <span class="flex-1 text-[15px] truncate ${textClass}">${team.name}</span>
                     </div>`;
             }
@@ -393,7 +393,7 @@
                     <div class="bg-gradient-to-b from-slate-900 to-slate-950 border border-yellow-500/30 rounded-2xl p-6 text-center shadow-glow-yellow relative overflow-hidden w-full">
                         <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-yellow-500/10 to-transparent"></div>
                         <h2 class="text-xs font-bold mb-2 tracking-[0.3em] text-yellow-400 uppercase relative z-10">World Champions</h2>
-                        <img src="https://flagcdn.com/w160/${winner.code}.png" class="w-32 h-20 mx-auto mb-4 rounded-lg shadow-md border-2 border-yellow-500/40 object-cover relative z-10" alt="Champion Flag" />
+                        <img src="https://flagcdn.com/w160/${winner.code}.webp" class="w-32 h-20 mx-auto mb-4 rounded-lg shadow-md border-2 border-yellow-500/40 object-cover relative z-10" alt="Champion Flag" />
                         <h1 class="text-2xl font-black text-white relative z-10">${winner.name}</h1>
                     </div>
                 </div>` : `<h2 class="text-xl font-black text-slate-500 uppercase tracking-[0.2em] text-center w-full mb-8 flex-shrink-0">World Champions</h2>`;
@@ -403,7 +403,7 @@
                     <div class="bg-slate-900/80 border border-orange-700/30 rounded-xl p-4 text-center shadow-lg relative overflow-hidden w-full">
                          <h2 class="text-[0.65rem] font-bold mb-3 tracking-[0.2em] text-orange-400 uppercase relative z-10">Bronze Winner</h2>
                          <div class="flex items-center justify-center space-x-4">
-                            <img src="https://flagcdn.com/w40/${bronzeWinner.code}.png" class="w-10 h-7 rounded shadow-sm border border-orange-700/40 object-cover relative z-10" alt="Bronze Flag" />
+                            <img src="https://flagcdn.com/w40/${bronzeWinner.code}.webp" class="w-10 h-7 rounded shadow-sm border border-orange-700/40 object-cover relative z-10" alt="Bronze Flag" />
                             <h1 class="text-xl font-bold text-white relative z-10">${bronzeWinner.name}</h1>
                          </div>
                     </div>
@@ -468,7 +468,7 @@
 
                         groupsHtml += `
                             <div class="flex items-center p-3 rounded-xl border cursor-pointer transition-all ${bgClass}" onclick="window.handleGroupTeamClick('${g}', '${teamId}')">
-                                <img src="https://flagcdn.com/w40/${team.code}.png" class="w-7 h-4.5 mr-3 object-cover rounded shadow-sm" alt="flag" />
+                                <img src="https://flagcdn.com/w40/${team.code}.webp" class="w-7 h-4.5 mr-3 object-cover rounded shadow-sm" alt="flag" />
                                 <span class="flex-1 font-semibold text-sm">${team.name}</span>
                                 ${isSelected ? `<span class="w-6 h-6 flex items-center justify-center bg-white text-slate-900 font-bold rounded-full text-xs shadow">${selectedIdx + 1}</span>` : ''}
                             </div>
@@ -513,7 +513,7 @@
 
                     thirdsHtml += `
                         <div onclick="window.handleThirdPlaceClick('${teamId}')" class="flex items-center p-3 rounded-xl border cursor-pointer transition-all ${cls}">
-                            <img src="https://flagcdn.com/w40/${team.code}.png" class="w-6 h-4 mr-3 object-cover rounded shadow-sm" alt="flag" />
+                            <img src="https://flagcdn.com/w40/${team.code}.webp" class="w-6 h-4 mr-3 object-cover rounded shadow-sm" alt="flag" />
                             <span class="font-medium text-sm truncate">${team.name}</span>
                         </div>
                     `;
