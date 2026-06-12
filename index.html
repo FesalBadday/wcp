@@ -379,7 +379,6 @@
                     </div>
                     
                     <div class="flex flex-col items-center justify-center w-full flex-1 relative">
-                        <h3 class="text-[10px] font-bold text-gray-500 uppercase mb-1 absolute -top-5">Final</h3>
                         ${renderPrintCard(finalMatch, 'final')}
                     </div>
                     
@@ -392,8 +391,7 @@
 
             printContainer.innerHTML = `
                 <div class="w-full flex flex-col p-6 bg-white text-black font-sans box-border mx-auto" style="width: 297mm; height: 200mm;">
-                    <h1 class="text-3xl font-black text-center mb-6 text-gray-900 uppercase tracking-widest">FIFA World Cup 2026 Prediction</h1>
-                    <div class="flex-grow flex items-stretch justify-center w-full">
+                    <div class="flex-grow flex items-stretch justify-center w-full pt-4">
                         ${renderPrintCol(r32L, true, 'r32')}
                         ${renderPrintConnectors(4, true)}
                         ${renderPrintCol(r16L, true, 'r16')}
