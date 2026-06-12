@@ -114,13 +114,13 @@
 
         const ROUNDS = ['r32', 'r16', 'qf', 'sf', 'final'];
 
-        // Increased height for SF and Final so they don't squish or clip!
+        // Dynamically configured heights to ensure match gaps remain perfectly tight in every round!
         window.ROUND_HEIGHTS = {
             'r32': 1800,
-            'r16': 1400,
-            'qf': 1100,
-            'sf': 950,
-            'final': 950
+            'r16': 920,
+            'qf': 480,
+            'sf': 300,
+            'final': 780
         };
 
         // App State
