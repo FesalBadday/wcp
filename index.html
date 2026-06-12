@@ -66,20 +66,6 @@
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }
-
-            #app-container {
-                display: none !important;
-            }
-
-            #print-container {
-                display: block !important;
-            }
-        }
-
-        @media screen {
-            #print-container {
-                display: none !important;
-            }
         }
     </style>
 </head>
@@ -87,14 +73,14 @@
 <body class="selection:bg-blue-500 selection:text-white antialiased bg-slate-950">
 
     <!-- Main Content Container: Using 100dvh prevents mobile address bar clipping -->
-    <main id="app-container" class="min-h-[100dvh] h-[100dvh] w-full flex flex-col">
+    <main id="app-container" class="min-h-[100dvh] h-[100dvh] w-full flex flex-col print:hidden">
         <div class="flex items-center justify-center h-full">
             <div class="animate-spin text-5xl">⚽</div>
         </div>
     </main>
 
     <!-- Print Container -->
-    <div id="print-container"></div>
+    <div id="print-container" class="hidden print:block"></div>
 
     <!-- App Logic -->
     <script>
@@ -123,7 +109,7 @@
         };
 
         const ROUNDS = ['r32', 'r16', 'qf', 'sf', 'final'];
-        window.ROUND_HEIGHTS = { 'r32': 1800, 'r16': 950, 'qf': 750, 'sf': 750, 'final': 750 };
+        const ROUND_HEIGHTS_MAP = { 'r32': 1800, 'r16': 950, 'qf': 750, 'sf': 750, 'final': 750 };
 
         // App State & Memory
         let state = {
@@ -138,9 +124,17 @@
         let groupScrollMemY = 0;
         let bracketScrollMemX = 0;
         let colScrollMemY = {};
-        let intentionalScrollReset = false;
 
         // Utilities
+        function getFlagSrc(code, w = 40) {
+            return `https://flagcdn.com/w${w}/${code}.png`;
+        }
+
+        function scheduleSave() {
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(saveStateToStorage, 300);
+        }
+
         function saveStateToStorage() {
             try {
                 localStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -155,8 +149,17 @@
         function setState(newState) {
             state = { ...state, ...newState };
             renderApp();
-            clearTimeout(saveTimeout);
-            saveTimeout = setTimeout(saveStateToStorage, 300);
+            scheduleSave();
+        }
+
+        function getTeamRank(teamCode) {
+            if (!teamCode) return null;
+            const code = teamCode.toUpperCase();
+            for (const g in state.groupSelections) {
+                const idx = (state.groupSelections[g] || []).indexOf(code);
+                if (idx !== -1) return { rank: idx + 1, group: g };
+            }
+            return null;
         }
 
         function initApp() {
@@ -174,7 +177,7 @@
         }
 
         // Event Actions
-        window.handleGroupTeamClick = (groupName, teamId) => {
+        function handleGroupTeamClick(groupName, teamId) {
             const current = state.groupSelections[groupName] || [];
             let newSelection;
             if (current.includes(teamId)) {
@@ -184,28 +187,9 @@
             } else return;
 
             setState({ groupSelections: { ...state.groupSelections, [groupName]: newSelection } });
-        };
+        }
 
-        window.handleThirdPlaceClick = (teamId) => {
-            const current = state.thirdPlaces;
-            let newThirds;
-            if (current.includes(teamId)) {
-                newThirds = current.filter(t => t !== teamId);
-            } else if (current.length < 8) {
-                newThirds = [...current, teamId];
-            } else return;
-
-            setState({ thirdPlaces: newThirds });
-        };
-
-        window.proceedToThirds = () => {
-            groupScrollMemY = 0;
-            intentionalScrollReset = true;
-            setState({ stage: 'thirds' });
-        };
-
-        window.generateBracket = () => {
-            intentionalScrollReset = true;
+        function generateBracket() {
             currentActiveTab = 'r32';
             bracketScrollMemX = 0;
             colScrollMemY = {};
@@ -246,9 +230,9 @@
             };
 
             setState({ bracket, stage: 'knockout' });
-        };
+        }
 
-        const clearDownstream = (bracketMut, fromRound, matchIndex) => {
+        function clearDownstream(bracketMut, fromRound, matchIndex) {
             const startIdx = ROUNDS.indexOf(fromRound);
             let currIdx = matchIndex;
 
@@ -256,29 +240,27 @@
                 const r = ROUNDS[i];
                 bracketMut[r][currIdx].winner = null;
 
-                if (r === 'final') bracketMut.final[0].winner = null;
                 if (r === 'sf') bracketMut.bronze[0] = { t1: null, t2: null, winner: null };
 
                 if (i < ROUNDS.length - 1) {
                     const nextR = ROUNDS[i + 1];
                     const nextIdx = Math.floor(currIdx / 2);
-                    if (currIdx % 2 === 0) bracketMut[nextR][nextIdx].t1 = null;
-                    else bracketMut[nextR][nextIdx].t2 = null;
+                    bracketMut[nextR][nextIdx][currIdx % 2 === 0 ? 't1' : 't2'] = null;
                     currIdx = nextIdx;
                 }
             }
-        };
+        }
 
         // Third Place Modal Logic
-        window.openThirdSelector = (matchIndex) => {
+        function openThirdSelector(matchIndex) {
             setState({ pickingThird: { matchIndex } });
-        };
+        }
 
-        window.closeThirdSelector = () => {
+        function closeThirdSelector() {
             setState({ pickingThird: null });
-        };
+        }
 
-        window.selectThird = (matchIndex, teamId) => {
+        function selectThird(matchIndex, teamId) {
             const nextBracket = structuredClone(state.bracket);
             const match = nextBracket.r32[matchIndex];
 
@@ -290,31 +272,24 @@
                 }
             }
             setState({ bracket: nextBracket, pickingThird: null });
-        };
+        }
 
-        window.triggerPrint = () => {
+        function triggerPrint() {
             const printContainer = document.getElementById('print-container');
 
             const renderPrintRow = (t, isWinner, isT1, match, roundId) => {
                 let rankHtml = '';
                 if (roundId === 'r32' && t) {
-                    let rankNum = '';
-                    let groupLetter = '';
-                    for (const g in state.groupSelections) {
-                        const idx = (state.groupSelections[g] || []).indexOf(t.code.toUpperCase());
-                        if (idx === 0) { rankNum = '1'; groupLetter = g; }
-                        else if (idx === 1) { rankNum = '2'; groupLetter = g; }
-                        else if (idx === 2) { rankNum = '3'; groupLetter = g; }
-                    }
-                    if (rankNum) {
-                        rankHtml = `<span class="ml-1 shrink-0 text-[7px] font-bold text-gray-500 bg-gray-100 px-1 py-0.5 rounded border border-gray-200 leading-none">${rankNum}${groupLetter}</span>`;
+                    const rank = getTeamRank(t.code);
+                    if (rank) {
+                        rankHtml = `<span class="ml-1 shrink-0 text-[7px] font-bold text-gray-500 bg-gray-100 px-1 py-0.5 rounded border border-gray-200 leading-none">${rank.rank}${rank.group}</span>`;
                     }
                 }
 
                 return `
                     <div class="flex items-center px-1.5 py-0.5 ${isWinner ? 'bg-gray-200 font-bold text-black' : 'text-gray-700'} text-[9px] leading-normal" style="height: 20px;">
                         ${t ? `
-                            <img src="https://flagcdn.com/w20/${t.code}.png" class="w-3.5 h-2.5 mr-1 border border-gray-300 shrink-0" style="object-fit: cover;" /> 
+                            <img src="${getFlagSrc(t.code, 20)}" class="w-3.5 h-2.5 mr-1 border border-gray-300 shrink-0" style="object-fit: cover;" /> 
                             <div class="flex-1 flex items-center min-w-0">
                                 <span class="truncate pb-[1px]">${t.name}</span>
                                 ${rankHtml}
@@ -325,8 +300,8 @@
             };
 
             const renderPrintCard = (match, roundId) => {
-                const t1 = match.t1 ? TEAMS[match.t1.toUpperCase()] : null;
-                const t2 = match.t2 ? TEAMS[match.t2.toUpperCase()] : null;
+                const t1 = match.t1 ? TEAMS[match.t1] : null;
+                const t2 = match.t2 ? TEAMS[match.t2] : null;
                 return `
                     <div class="border border-gray-400 rounded bg-white overflow-hidden shadow-sm mx-auto" style="width: 95px;">
                         ${renderPrintRow(t1, match.winner === match.t1, true, match, roundId)}
@@ -381,14 +356,14 @@
 
             const finalMatch = state.bracket.final[0];
             const bronzeMatch = state.bracket.bronze[0];
-            const winner = finalMatch.winner ? TEAMS[finalMatch.winner.toUpperCase()] : null;
+            const winner = finalMatch.winner ? TEAMS[finalMatch.winner] : null;
 
             const centerHtml = `
                 <div class="w-36 flex flex-col items-center justify-center shrink-0 h-full px-2 relative z-10">
                     <div class="absolute w-full flex flex-col items-center" style="top: 8%;">
                         <h3 class="text-[12px] font-black text-gray-500 uppercase tracking-widest mb-1">World Champion</h3>
                         ${winner ? `
-                            <img src="https://flagcdn.com/w80/${winner.code}.png" class="w-16 h-10 mx-auto border border-gray-400 rounded shadow-sm mb-1 object-cover" />
+                            <img src="${getFlagSrc(winner.code, 80)}" class="w-16 h-10 mx-auto border border-gray-400 rounded shadow-sm mb-1 object-cover" />
                             <span class="font-black text-xs uppercase text-gray-900">${winner.name}</span>
                         ` : `
                             <div class="w-16 h-10 mx-auto border border-gray-400 rounded shadow-inner mb-1 bg-gray-100 flex items-center justify-center text-xl">🏆</div>
@@ -435,9 +410,9 @@
 
             // Allow the DOM to securely render the printable hidden div before capturing it
             setTimeout(() => window.print(), 100);
-        };
+        }
 
-        window.triggerConfetti = () => {
+        function triggerConfetti() {
             const duration = 4000;
             const animationEnd = Date.now() + duration;
             const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 99999 };
@@ -451,9 +426,9 @@
                 confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } });
                 confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } });
             }, 250);
-        };
+        }
 
-        window.advanceWinner = (round, matchIndex, teamId) => {
+        function advanceWinner(round, matchIndex, teamId) {
             const nextBracket = structuredClone(state.bracket);
             const currentMatch = nextBracket[round][matchIndex];
             const oldWinner = state.bracket[round][matchIndex].winner;
@@ -468,17 +443,11 @@
                 const nextMatchIndex = Math.floor(matchIndex / 2);
                 const isT1 = matchIndex % 2 === 0;
                 const nextMatch = nextBracket[nextRound][nextMatchIndex];
+                const teamKey = isT1 ? 't1' : 't2';
 
-                if (isT1) {
-                    if (nextMatch.t1 !== teamId) {
-                        nextMatch.t1 = teamId;
-                        if (nextMatch.winner) clearDownstream(nextBracket, nextRound, nextMatchIndex);
-                    }
-                } else {
-                    if (nextMatch.t2 !== teamId) {
-                        nextMatch.t2 = teamId;
-                        if (nextMatch.winner) clearDownstream(nextBracket, nextRound, nextMatchIndex);
-                    }
+                if (nextMatch[teamKey] !== teamId) {
+                    nextMatch[teamKey] = teamId;
+                    if (nextMatch.winner) clearDownstream(nextBracket, nextRound, nextMatchIndex);
                 }
             }
 
@@ -495,27 +464,27 @@
             }
 
             if (round === 'final' && oldWinner !== teamId) {
-                setTimeout(window.triggerConfetti, 100);
+                setTimeout(triggerConfetti, 100);
             }
 
             setState({ bracket: nextBracket });
-        };
+        }
 
-        window.updateBracketHeight = (roundId) => {
+        function updateBracketHeight(roundId) {
             const wrapper = document.getElementById('bracket-tree-wrapper');
             if (wrapper) {
-                const targetHeight = window.ROUND_HEIGHTS[roundId] || 1800;
+                const targetHeight = ROUND_HEIGHTS_MAP[roundId] || 1800;
                 wrapper.style.height = `${targetHeight}px`;
             }
-        };
+        }
 
         function setupCarouselTracking() {
             const carousel = document.getElementById('bracket-scroll-container');
             if (!carousel) return;
 
-            let isScrolling;
+            let isScrolling = null;
             carousel.addEventListener('scroll', () => {
-                window.clearTimeout(isScrolling);
+                clearTimeout(isScrolling);
                 isScrolling = setTimeout(() => {
                     let closestRound = ROUNDS[0];
                     let minDiff = Infinity;
@@ -536,54 +505,46 @@
                     if (currentActiveTab !== closestRound) {
                         currentActiveTab = closestRound;
 
-                        window.updateBracketHeight(closestRound);
+                        updateBracketHeight(closestRound);
 
                         // Ensure vertical scroll smoothly resets to top when swapping rounds via horizontal swipe
                         carousel.scrollTo({ top: 0, behavior: 'smooth' });
 
-                        clearTimeout(saveTimeout);
-                        saveTimeout = setTimeout(saveStateToStorage, 300);
+                        scheduleSave();
                     }
                 }, 66); // Debounce to prevent heavy layout recalculations
             }, { passive: true });
         }
 
-        const getRoundName = (id) => {
+        function getRoundName(id) {
             const names = { 'r32': 'Round of 32', 'r16': 'Round of 16', 'qf': 'Quarter-Finals', 'sf': 'Semi-Finals', 'final': 'Final' };
             return names[id] || '';
-        };
+        }
 
         // Render Sub-components
-        const renderTeamRow = (team, isWinner, roundId, matchIndex, isT1, match) => {
+        function renderTeamRow(team, isWinner, roundId, matchIndex, isT1, match) {
             const bgClass = isWinner ? 'bg-blue-600/20' : 'hover:bg-slate-700/50';
             const textClass = isWinner ? 'text-white font-bold' : 'text-slate-300 font-medium';
             const indicator = isWinner ? `<div class="w-1 h-full bg-blue-500 absolute left-0 top-0"></div>` : '';
 
             let rankHtml = '';
             if (roundId === 'r32' && team) {
-                let rankNum = '';
-                let groupLetter = '';
-                for (const g in state.groupSelections) {
-                    const idx = (state.groupSelections[g] || []).indexOf(team.code.toUpperCase());
-                    if (idx === 0) { rankNum = '1'; groupLetter = g; }
-                    else if (idx === 1) { rankNum = '2'; groupLetter = g; }
-                    else if (idx === 2) { rankNum = '3'; groupLetter = g; }
-                }
-                if (rankNum) {
-                    rankHtml = `<span class="ml-2 shrink-0 text-[10px] font-bold text-slate-400 bg-slate-900/50 px-1.5 py-0.5 rounded border border-slate-700/50 leading-none">${rankNum}${groupLetter}</span>`;
+                const rank = getTeamRank(team.code);
+                if (rank) {
+                    rankHtml = `<span class="ml-2 shrink-0 text-[10px] font-bold text-slate-400 bg-slate-900/50 px-1.5 py-0.5 rounded border border-slate-700/50 leading-none">${rank.rank}${rank.group}</span>`;
                 }
             }
 
             if (team) {
                 // If it's a 3rd place slot that was already selected, add a tiny swap button so they can change their mind
                 const swapBtn = (!isT1 && match.isThird && roundId === 'r32') ? `
-                    <button onclick="event.stopPropagation(); window.openThirdSelector(${matchIndex})" class="w-8 h-8 flex shrink-0 items-center justify-center bg-slate-700/80 rounded-lg hover:bg-slate-600 text-sm ml-2 z-10 transition-colors shadow-sm border border-slate-600">🔄</button>
+                    <button onclick="event.stopPropagation(); openThirdSelector(${matchIndex})" class="w-8 h-8 flex shrink-0 items-center justify-center bg-slate-700/80 rounded-lg hover:bg-slate-600 text-sm ml-2 z-10 transition-colors shadow-sm border border-slate-600">🔄</button>
                 ` : '';
 
                 return `
-                    <div class="relative flex items-center px-4 py-3 cursor-pointer transition-colors ${bgClass}" onclick="window.advanceWinner('${roundId}', ${matchIndex}, '${team.code.toUpperCase()}')">
+                    <div class="relative flex items-center px-4 py-3 cursor-pointer transition-colors ${bgClass}" onclick="advanceWinner('${roundId}', ${matchIndex}, '${team.code.toUpperCase()}')">
                         ${indicator}
-                        <img src="https://flagcdn.com/w40/${team.code}.png" class="w-7 h-5 mr-4 shrink-0 rounded shadow-sm object-cover" alt="flag" />
+                        <img src="${getFlagSrc(team.code)}" class="w-7 h-5 mr-4 shrink-0 rounded shadow-sm object-cover" alt="flag" />
                         <div class="flex-1 flex items-center min-w-0">
                             <span class="text-[15px] truncate leading-normal pb-[1px] ${textClass}">${team.name}</span>
                             ${rankHtml}
@@ -595,7 +556,7 @@
             // Render Empty "Select 3rd Place" Button
             if (!isT1 && match.isThird && roundId === 'r32') {
                 return `
-                    <div class="relative flex items-center justify-center px-4 py-[14px] bg-blue-900/20 hover:bg-blue-800/30 border-t border-b border-blue-800/40 cursor-pointer transition-all border-dashed" onclick="window.openThirdSelector(${matchIndex})">
+                    <div class="relative flex items-center justify-center px-4 py-[14px] bg-blue-900/20 hover:bg-blue-800/30 border-t border-b border-blue-800/40 cursor-pointer transition-all border-dashed" onclick="openThirdSelector(${matchIndex})">
                         <span class="text-[13px] font-bold text-blue-400 uppercase tracking-widest">+ Select ${match.label}</span>
                     </div>`;
             }
@@ -605,11 +566,11 @@
                 <div class="relative flex items-center px-4 py-3 bg-slate-800/50">
                     <span class="flex-1 text-[15px] font-medium text-slate-500 ml-11 leading-normal pb-[1px]">TBD</span>
                 </div>`;
-        };
+        }
 
-        const renderNewMatchCard = (match, roundId, matchIndex) => {
-            const t1 = match.t1 ? TEAMS[match.t1.toUpperCase()] : null;
-            const t2 = match.t2 ? TEAMS[match.t2.toUpperCase()] : null;
+        function renderNewMatchCard(match, roundId, matchIndex) {
+            const t1 = match.t1 ? TEAMS[match.t1] : null;
+            const t2 = match.t2 ? TEAMS[match.t2] : null;
             const borderClass = match.winner ? 'border-blue-500/50 shadow-glow-blue' : 'border-slate-700/50';
 
             return `
@@ -618,9 +579,9 @@
                     <div class="h-px bg-slate-700/50 w-full"></div>
                     ${renderTeamRow(t2, match.winner === match.t2, roundId, matchIndex, false, match)}
                 </div>`;
-        };
+        }
 
-        const renderVerticalMatchColumn = (roundId, matchArray, count) => {
+        function renderVerticalMatchColumn(roundId, matchArray, count) {
             const matchesHtml = matchArray.slice(0, count).map((m, i) => `
                 <div class="w-full flex-1 flex flex-col justify-center py-2 relative">
                     ${renderNewMatchCard(m, roundId, i)}
@@ -634,21 +595,21 @@
                         ${matchesHtml}
                     </div>
                 </div>`;
-        };
+        }
 
-        const renderFinalColumn = () => {
+        function renderFinalColumn() {
             const finalMatch = state.bracket.final[0];
             const bronzeMatch = state.bracket.bronze[0];
 
-            const winner = finalMatch.winner ? TEAMS[finalMatch.winner.toUpperCase()] : null;
-            const bronzeWinner = bronzeMatch.winner ? TEAMS[bronzeMatch.winner.toUpperCase()] : null;
+            const winner = finalMatch.winner ? TEAMS[finalMatch.winner] : null;
+            const bronzeWinner = bronzeMatch.winner ? TEAMS[bronzeMatch.winner] : null;
 
             const championHtml = winner ? `
                 <div class="w-full mb-8 z-10 flex-shrink-0">
                     <div class="bg-gradient-to-b from-slate-900 to-slate-950 border border-yellow-500/30 rounded-2xl p-6 text-center shadow-glow-yellow relative overflow-hidden w-full">
                         <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-yellow-500/10 to-transparent"></div>
                         <h2 class="text-xs font-bold mb-2 tracking-[0.3em] text-yellow-400 uppercase relative z-10">World Champions</h2>
-                        <img src="https://flagcdn.com/w160/${winner.code}.png" class="w-32 h-20 mx-auto mb-4 rounded-lg shadow-md border-2 border-yellow-500/40 object-cover relative z-10" alt="Champion Flag" />
+                        <img src="${getFlagSrc(winner.code, 160)}" class="w-32 h-20 mx-auto mb-4 rounded-lg shadow-md border-2 border-yellow-500/40 object-cover relative z-10" alt="Champion Flag" />
                         <h1 class="text-2xl font-black text-white relative z-10">${winner.name}</h1>
                     </div>
                 </div>` : `<h2 class="text-xl font-black text-slate-500 uppercase tracking-[0.2em] text-center w-full mb-8 flex-shrink-0">World Champions</h2>`;
@@ -658,7 +619,7 @@
                     <div class="bg-slate-900/80 border border-orange-700/30 rounded-xl p-4 text-center shadow-lg relative overflow-hidden w-full">
                          <h2 class="text-[0.65rem] font-bold mb-3 tracking-[0.2em] text-orange-400 uppercase relative z-10">Bronze Winner</h2>
                          <div class="flex items-center justify-center space-x-4">
-                            <img src="https://flagcdn.com/w40/${bronzeWinner.code}.png" class="w-10 h-7 rounded shadow-sm border border-orange-700/40 object-cover relative z-10" alt="Bronze Flag" />
+                            <img src="${getFlagSrc(bronzeWinner.code)}" class="w-10 h-7 rounded shadow-sm border border-orange-700/40 object-cover relative z-10" alt="Bronze Flag" />
                             <h1 class="text-xl font-bold text-white relative z-10">${bronzeWinner.name}</h1>
                          </div>
                     </div>
@@ -677,7 +638,7 @@
                         <h2 class="text-xs font-bold mt-8 tracking-[0.2em] text-orange-400 uppercase text-center w-full flex-shrink-0">Bronze Match</h2>
                         ${bronzeHtml}
 
-                        <button onclick="window.triggerPrint()" class="mt-12 mb-8 flex items-center justify-center space-x-3 bg-slate-800 hover:bg-slate-700 text-white px-6 py-4 rounded-2xl border border-slate-600 transition-all w-full shadow-lg flex-shrink-0">
+                        <button onclick="triggerPrint()" class="mt-12 mb-8 flex items-center justify-center space-x-3 bg-slate-800 hover:bg-slate-700 text-white px-6 py-4 rounded-2xl border border-slate-600 transition-all w-full shadow-lg flex-shrink-0">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
                             <span class="font-bold text-lg">Print Full Bracket</span>
                         </button>
@@ -720,17 +681,12 @@
                         const team = TEAMS[teamId];
                         const selectedIdx = (state.groupSelections[g] || []).indexOf(teamId);
                         const isSelected = selectedIdx !== -1;
-                        let bgClass = 'bg-slate-800/80 border-slate-700/50 text-slate-300 hover:bg-slate-700/80';
-
-                        if (isSelected) {
-                            if (selectedIdx === 0) bgClass = 'bg-blue-600/20 border-blue-500/50 text-white';
-                            else if (selectedIdx === 1) bgClass = 'bg-cyan-600/20 border-cyan-500/50 text-white';
-                            else bgClass = 'bg-purple-600/20 border-purple-500/50 text-white'; // Third place indicator color
-                        }
+                        const selectedStyles = ['bg-blue-600/20 border-blue-500/50 text-white', 'bg-cyan-600/20 border-cyan-500/50 text-white', 'bg-purple-600/20 border-purple-500/50 text-white'];
+                        const bgClass = isSelected ? selectedStyles[selectedIdx] : 'bg-slate-800/80 border-slate-700/50 text-slate-300 hover:bg-slate-700/80';
 
                         groupsHtml += `
-                            <div class="flex items-center p-3 rounded-xl border cursor-pointer transition-all ${bgClass}" onclick="window.handleGroupTeamClick('${g}', '${teamId}')">
-                                <img src="https://flagcdn.com/w40/${team.code}.png" class="w-7 h-4.5 mr-3 object-cover rounded shadow-sm" alt="flag" />
+                            <div class="flex items-center p-3 rounded-xl border cursor-pointer transition-all ${bgClass}" onclick="handleGroupTeamClick('${g}', '${teamId}')">
+                                <img src="${getFlagSrc(team.code)}" class="w-7 h-4.5 mr-3 object-cover rounded shadow-sm" alt="flag" />
                                 <span class="flex-1 font-semibold text-sm truncate leading-normal pb-[1px]">${team.name}</span>
                                 ${isSelected ? `<span class="w-6 h-6 flex items-center justify-center bg-white text-slate-900 font-bold rounded-full text-xs shadow">${selectedIdx + 1}</span>` : ''}
                             </div>
@@ -742,53 +698,13 @@
                 if (isGroupsComplete) {
                     groupsHtml += `
                         <div class="mt-8 mb-6">
-                            <button onclick="window.generateBracket()" class="w-full flex justify-center items-center bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold py-4 rounded-xl shadow-glow-blue transition-all">
+                            <button onclick="generateBracket()" class="w-full flex justify-center items-center bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold py-4 rounded-xl shadow-glow-blue transition-all">
                                 Generate Knockout Bracket <span class="ml-2 text-xl">🚀</span>
                             </button>
                         </div>
                     `;
                 }
                 container.innerHTML = groupsHtml + `</div></div>`;
-            }
-
-            else if (state.stage === 'thirds') {
-                const totalSelected = state.thirdPlaces.length;
-                const availableThirds = Object.keys(GROUPS).map(g => (state.groupSelections[g] || [])[2]).filter(Boolean);
-
-                let thirdsHtml = `
-                    <div id="group-scroll-container" class="w-full h-full overflow-y-auto custom-scrollbar p-4">
-                        <div class="max-w-md mx-auto pt-6 pb-32">
-                        
-                        <div class="flex justify-between items-center mb-6 bg-slate-800/80 p-4 rounded-2xl border border-slate-700/80 shadow-sm backdrop-blur-sm">
-                             <span class="font-bold text-slate-300">Selected:</span>
-                             <span class="font-black text-2xl ${totalSelected === 8 ? 'text-green-400' : 'text-purple-400'}">
-                                 ${totalSelected} <span class="text-slate-500 text-lg">/ 8</span>
-                             </span>
-                        </div>
-                        <div class="grid grid-cols-2 gap-2 mb-6">
-                `;
-
-                availableThirds.forEach(teamId => {
-                    const team = TEAMS[teamId];
-                    const isSelected = state.thirdPlaces.includes(teamId);
-                    const cls = isSelected ? 'border-purple-500/60 bg-purple-600/20 text-white' : 'border-slate-700/50 bg-slate-800/80 text-slate-300 hover:bg-slate-700/80';
-
-                    thirdsHtml += `
-                        <div onclick="window.handleThirdPlaceClick('${teamId}')" class="flex items-center p-3 rounded-xl border cursor-pointer transition-all ${cls}">
-                            <img src="https://flagcdn.com/w40/${team.code}.png" class="w-6 h-4 mr-3 object-cover rounded shadow-sm" alt="flag" />
-                            <span class="font-medium text-sm truncate leading-normal pb-[1px]">${team.name}</span>
-                        </div>
-                    `;
-                });
-
-                container.innerHTML = thirdsHtml + `
-                    </div>
-                        <div class="mt-8 mb-6">
-                            <button ${totalSelected !== 8 ? 'disabled' : ''} onclick="window.generateBracket()" class="w-full flex justify-center items-center font-bold py-4 rounded-xl transition-all ${totalSelected === 8 ? 'bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white shadow-[0_0_15px_rgba(22,163,74,0.3)]' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}">
-                                Generate Bracket <span class="ml-2">🚀</span>
-                            </button>
-                        </div>
-                    </div></div>`;
             }
 
             else if (state.stage === 'knockout' && state.bracket) {
@@ -816,11 +732,11 @@
                         const team = TEAMS[teamId];
                         const isAssigned = assigned.includes(teamId) && match.t2 !== teamId;
                         const bg = isAssigned ? 'bg-slate-800/50 opacity-40 cursor-not-allowed' : 'bg-slate-800 hover:bg-slate-700 cursor-pointer border-slate-600 hover:border-blue-500';
-                        const onclick = isAssigned ? '' : `onclick="window.selectThird(${matchIndex}, '${teamId}')"`;
+                        const onclick = isAssigned ? '' : `onclick="selectThird(${matchIndex}, '${teamId}')"`;
 
                         thirdsListHtml += `
                             <div class="flex items-center p-3 rounded-xl border transition-all ${bg}" ${onclick}>
-                                <img src="https://flagcdn.com/w40/${team.code}.png" class="w-8 h-5 mr-4 rounded shadow-sm object-cover" />
+                                <img src="${getFlagSrc(team.code)}" class="w-8 h-5 mr-4 rounded shadow-sm object-cover" />
                                 <span class="flex-1 font-bold text-[15px] text-slate-200 leading-normal pb-[1px]">${team.name}</span>
                                 ${isAssigned ? '<span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Assigned</span>' : ''}
                             </div>
@@ -829,14 +745,14 @@
 
                     html += `
                         <div class="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                            <div class="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onclick="window.closeThirdSelector()"></div>
+                            <div class="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onclick="closeThirdSelector()"></div>
                             <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden flex flex-col relative z-10 animate-in fade-in zoom-in duration-200">
                                 <div class="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-850">
                                     <div>
                                         <h3 class="text-lg font-black text-white leading-tight">Select Opponent</h3>
                                         <p class="text-[11px] font-bold text-blue-400 uppercase tracking-widest mt-0.5">${match.label}</p>
                                     </div>
-                                    <button onclick="window.closeThirdSelector()" class="w-8 h-8 flex items-center justify-center rounded-full bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors">✕</button>
+                                    <button onclick="closeThirdSelector()" class="w-8 h-8 flex items-center justify-center rounded-full bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors">✕</button>
                                 </div>
                                 <div class="p-4 max-h-[60vh] overflow-y-auto custom-scrollbar flex flex-col space-y-2.5">
                                     ${thirdsListHtml}
@@ -867,17 +783,6 @@
                 } else {
                     const groupScroll = document.getElementById('group-scroll-container');
                     if (groupScroll) groupScroll.scrollTop = groupScrollMemY;
-                }
-
-                if (intentionalScrollReset) {
-                    if (state.stage === 'knockout') {
-                        const carousel = document.getElementById('bracket-scroll-container');
-                        if (carousel) {
-                            carousel.style.scrollBehavior = 'auto';
-                            carousel.scrollLeft = 0;
-                        }
-                    }
-                    intentionalScrollReset = false;
                 }
             });
         }
