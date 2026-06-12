@@ -70,7 +70,10 @@
             }
 
             #print-container {
-                display: block !important;
+                display: flex !important;
+                min-height: 100vh;
+                align-items: center;
+                justify-content: center;
             }
         }
 
@@ -96,7 +99,7 @@
 
     <!-- App Logic -->
     <script>
-        const STORAGE_KEY = 'fifa-world-cup-2026-data-v7';
+        const STORAGE_KEY = 'fifa-world-cup-2026-data-v8';
 
         // Tournament Data
         const TEAMS = {
@@ -206,27 +209,31 @@
             bracketScrollMemX = 0;
             colScrollMemY = {};
 
-            const getSelection = (index) => Object.keys(GROUPS).map(g => state.groupSelections[g]?.[index]);
-            const firsts = getSelection(0);
-            const seconds = getSelection(1);
+            const get1st = (g) => state.groupSelections[g]?.[0];
+            const get2nd = (g) => state.groupSelections[g]?.[1];
+            const get3rd = (i) => state.thirdPlaces[i];
 
+            // OFFICIAL 2026 FIFA WORLD CUP BRACKET FIXTURE MAPPING
             const r32 = [
-                { t1: firsts[0], t2: state.thirdPlaces[0], winner: null },
-                { t1: seconds[0], t2: seconds[1], winner: null },
-                { t1: firsts[1], t2: state.thirdPlaces[1], winner: null },
-                { t1: seconds[2], t2: seconds[3], winner: null },
-                { t1: firsts[2], t2: state.thirdPlaces[2], winner: null },
-                { t1: seconds[4], t2: seconds[5], winner: null },
-                { t1: firsts[3], t2: state.thirdPlaces[3], winner: null },
-                { t1: firsts[4], t2: seconds[6], winner: null },
-                { t1: firsts[5], t2: state.thirdPlaces[4], winner: null },
-                { t1: firsts[6], t2: seconds[7], winner: null },
-                { t1: firsts[7], t2: state.thirdPlaces[5], winner: null },
-                { t1: firsts[8], t2: seconds[8], winner: null },
-                { t1: firsts[9], t2: state.thirdPlaces[6], winner: null },
-                { t1: firsts[10], t2: seconds[9], winner: null },
-                { t1: firsts[11], t2: state.thirdPlaces[7], winner: null },
-                { t1: seconds[10], t2: seconds[11], winner: null }
+                // Left Side of Bracket (Matches 1-8)
+                { t1: get1st('E'), t2: get3rd(0), winner: null },
+                { t1: get1st('I'), t2: get3rd(1), winner: null },
+                { t1: get2nd('A'), t2: get2nd('B'), winner: null },
+                { t1: get1st('F'), t2: get2nd('C'), winner: null },
+                { t1: get2nd('K'), t2: get2nd('L'), winner: null },
+                { t1: get1st('H'), t2: get2nd('J'), winner: null },
+                { t1: get1st('D'), t2: get3rd(2), winner: null },
+                { t1: get1st('G'), t2: get3rd(3), winner: null },
+
+                // Right Side of Bracket (Matches 9-16)
+                { t1: get1st('C'), t2: get2nd('F'), winner: null },
+                { t1: get2nd('E'), t2: get2nd('I'), winner: null },
+                { t1: get1st('A'), t2: get3rd(4), winner: null },
+                { t1: get1st('L'), t2: get3rd(5), winner: null },
+                { t1: get1st('J'), t2: get2nd('H'), winner: null },
+                { t1: get2nd('D'), t2: get2nd('G'), winner: null },
+                { t1: get1st('B'), t2: get3rd(6), winner: null },
+                { t1: get1st('K'), t2: get3rd(7), winner: null }
             ];
 
             const bracket = {
@@ -266,8 +273,8 @@
             const printContainer = document.getElementById('print-container');
 
             const renderPrintRow = (t, isWinner) => `
-                <div class="flex items-center px-1.5 py-0.5 ${isWinner ? 'bg-gray-200 font-bold text-black' : 'text-gray-700'} text-[10px] leading-normal" style="height: 22px;">
-                    ${t ? `<img src="https://flagcdn.com/w20/${t.code}.png" class="w-4 h-3 mr-1.5 border border-gray-300" style="object-fit: cover;" /> <span class="truncate pb-[1px]">${t.name}</span>` : '<span class="text-gray-400 pb-[1px]">TBD</span>'}
+                <div class="flex items-center px-1.5 py-0.5 ${isWinner ? 'bg-gray-200 font-bold text-black' : 'text-gray-700'} text-[9px] leading-normal" style="height: 20px;">
+                    ${t ? `<img src="https://flagcdn.com/w20/${t.code}.png" class="w-3.5 h-2.5 mr-1 border border-gray-300" style="object-fit: cover;" /> <span class="truncate pb-[1px]">${t.name}</span>` : '<span class="text-gray-400 pb-[1px]">TBD</span>'}
                 </div>
             `;
 
@@ -292,6 +299,7 @@
                 return `<div class="flex flex-col shrink-0 h-full w-[100px]">${html}</div>`;
             };
 
+            // Fully functional connecting lines for the print view!
             const renderPrintConnectors = (count, isLeft, isStraight = false) => {
                 let html = '';
                 for (let i = 0; i < count; i++) {
@@ -314,7 +322,7 @@
                             </div>`;
                     }
                 }
-                return `<div class="w-5 flex flex-col shrink-0 h-full">${html}</div>`;
+                return `<div class="w-4 flex flex-col shrink-0 h-full">${html}</div>`;
             };
 
             // Split the bracket mathematically into Left & Right sides for printing
