@@ -6,6 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FIFA World Cup 2026</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Canvas Confetti Library -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -132,27 +134,31 @@
             groupSelections: {},
             thirdPlaces: [],
             bracket: null,
-            resetConfirm: false
+            resetConfirm: false,
+            zoomScale: 1 // Track zoom memory globally
         };
 
         let saveTimeout = null;
         let intentionalScrollReset = false;
+
+        function saveStateToStorage() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                    groupSelections: state.groupSelections,
+                    thirdPlaces: state.thirdPlaces,
+                    bracket: state.bracket,
+                    stage: state.stage,
+                    zoomScale: state.zoomScale
+                }));
+            } catch (e) { console.error("Save failed", e); }
+        }
 
         function setState(newState) {
             state = { ...state, ...newState };
             renderApp();
 
             clearTimeout(saveTimeout);
-            saveTimeout = setTimeout(() => {
-                try {
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-                        groupSelections: state.groupSelections,
-                        thirdPlaces: state.thirdPlaces,
-                        bracket: state.bracket,
-                        stage: state.stage
-                    }));
-                } catch (e) { console.error("Save failed", e); }
-            }, 300);
+            saveTimeout = setTimeout(saveStateToStorage, 300);
         }
 
         function initApp() {
@@ -164,6 +170,7 @@
                     state.thirdPlaces = parsed.thirdPlaces || [];
                     state.bracket = parsed.bracket || null;
                     state.stage = parsed.stage || 'groups';
+                    state.zoomScale = parsed.zoomScale || 1;
                 }
             } catch (e) { console.error("Load failed", e); }
             renderApp();
@@ -173,7 +180,7 @@
         window.handleReset = () => {
             if (state.resetConfirm) {
                 intentionalScrollReset = true;
-                setState({ groupSelections: {}, thirdPlaces: [], bracket: null, stage: 'groups', resetConfirm: false });
+                setState({ groupSelections: {}, thirdPlaces: [], bracket: null, stage: 'groups', resetConfirm: false, zoomScale: 1 });
             } else {
                 setState({ resetConfirm: true });
                 setTimeout(() => { if (state.resetConfirm) setState({ resetConfirm: false }); }, 3000);
@@ -238,7 +245,7 @@
                 final: Array.from({ length: 1 }, () => ({ t1: null, t2: null, winner: null })),
                 bronze: Array.from({ length: 1 }, () => ({ t1: null, t2: null, winner: null })) // Add Bronze match
             };
-            setState({ bracket, stage: 'knockout' });
+            setState({ bracket, stage: 'knockout', zoomScale: 1 });
         };
 
         const clearDownstream = (bracketMut, fromRound, matchIndex) => {
@@ -262,9 +269,35 @@
             }
         };
 
+        window.triggerConfetti = () => {
+            var duration = 4 * 1000;
+            var animationEnd = Date.now() + duration;
+            var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 99999 };
+
+            function randomInRange(min, max) {
+                return Math.random() * (max - min) + min;
+            }
+
+            var interval = setInterval(function () {
+                var timeLeft = animationEnd - Date.now();
+
+                if (timeLeft <= 0) {
+                    return clearInterval(interval);
+                }
+
+                var particleCount = 50 * (timeLeft / duration);
+                // since particles fall down, start a bit higher than random
+                confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } });
+                confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } });
+            }, 250);
+        };
+
         window.advanceWinner = (round, matchIndex, teamId) => {
             const nextBracket = JSON.parse(JSON.stringify(state.bracket));
             const currentMatch = nextBracket[round][matchIndex];
+
+            // Get the old winner before we update it
+            const oldWinner = state.bracket[round][matchIndex].winner;
 
             // Don't advance if the team is not set
             if (!currentMatch.t1 || !currentMatch.t2) return;
@@ -305,8 +338,88 @@
                 }
             }
 
+            // Trigger confetti if a new final winner is picked
+            if (round === 'final' && oldWinner !== teamId) {
+                setTimeout(() => window.triggerConfetti(), 100);
+            }
+
             setState({ bracket: nextBracket });
         };
+
+        // Highly optimized direct DOM zoom function to prevent sluggish re-renders
+        window.updateZoom = (newScale) => {
+            newScale = Math.min(Math.max(0.3, newScale), 2.5); // Clamp scale limits
+            state.zoomScale = newScale;
+
+            const wrapper = document.getElementById('bracket-zoom-wrapper');
+            const sizingBox = document.getElementById('bracket-sizing-box');
+
+            if (wrapper && sizingBox) {
+                wrapper.style.transform = `scale(${newScale})`;
+
+                // Keep the scrollbar boundaries tightly matched to the scaled content
+                let origWidth = wrapper.getAttribute('data-orig-width');
+                if (!origWidth) {
+                    const oldTransform = wrapper.style.transform;
+                    wrapper.style.transform = 'scale(1)';
+                    origWidth = wrapper.scrollWidth;
+                    wrapper.setAttribute('data-orig-width', origWidth);
+                    wrapper.style.transform = oldTransform;
+                }
+
+                sizingBox.style.width = `${origWidth * newScale}px`;
+                sizingBox.style.height = `${1300 * newScale}px`;
+            }
+
+            // Debounce saving the scale so it doesn't hurt performance while pinching
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(saveStateToStorage, 300);
+        };
+
+        // Mobile Pinch & Desktop Wheel Listeners
+        function bindZoomEvents() {
+            const scrollContainer = document.getElementById('bracket-scroll-container');
+            if (!scrollContainer) return;
+
+            let initialPinchDistance = null;
+            let initialZoomScale = 1;
+
+            // Desktop Mouse Wheel
+            scrollContainer.addEventListener('wheel', (e) => {
+                if (e.ctrlKey) {
+                    e.preventDefault();
+                    window.updateZoom(state.zoomScale - (e.deltaY * 0.003));
+                }
+            }, { passive: false });
+
+            // Mobile Two-Finger Start
+            scrollContainer.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 2) {
+                    initialPinchDistance = Math.hypot(
+                        e.touches[0].clientX - e.touches[1].clientX,
+                        e.touches[0].clientY - e.touches[1].clientY
+                    );
+                    initialZoomScale = state.zoomScale;
+                }
+            }, { passive: false });
+
+            // Mobile Pinch Motion
+            scrollContainer.addEventListener('touchmove', (e) => {
+                if (e.touches.length === 2 && initialPinchDistance) {
+                    e.preventDefault(); // Prevent standard browser pinch
+                    const currentDistance = Math.hypot(
+                        e.touches[0].clientX - e.touches[1].clientX,
+                        e.touches[0].clientY - e.touches[1].clientY
+                    );
+                    const scale = initialZoomScale * (currentDistance / initialPinchDistance);
+                    window.updateZoom(scale);
+                }
+            }, { passive: false });
+
+            scrollContainer.addEventListener('touchend', (e) => {
+                if (e.touches.length < 2) initialPinchDistance = null;
+            });
+        }
 
         // Render Sub-components
         const renderTeamRow = (team, isWinner, roundId, matchIndex) => {
@@ -390,7 +503,7 @@
             const trophyHtml = `
                 <div class="flex justify-center items-center my-6 z-10">
                      <!-- Placeholder for Trophy Image - Using a large emoji for now -->
-                    <div class="text-[10rem] drop-shadow-[0_0_30px_rgba(234,179,8,0.4)]">🏆</div>
+                    <div class="text-[10rem] drop-shadow-[0_0_30px_rgba(234,179,8,0.4)] cursor-default select-none">🏆</div>
                 </div>
             `;
 
@@ -546,47 +659,59 @@
             }
 
             else if (state.stage === 'knockout' && state.bracket) {
-                // Fixed Explicit Height ensures Safari doesn't collapse the empty flex elements
                 container.innerHTML = `
-                    <div class="p-4 w-full h-full flex flex-col">
+                    <div class="p-4 w-full h-full flex flex-col relative">
                         <div class="text-center mb-4 flex-shrink-0">
                             <h2 class="text-3xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-teal-300 tracking-tight uppercase">Knockout Stage</h2>
+                            <p class="text-slate-400 text-xs sm:text-sm font-medium mt-1">
+                                Pinch to zoom out or scroll. Tap a team to advance them!
+                            </p>
                         </div>
-                        <div id="bracket-scroll-container" class="relative w-full flex-grow bg-slate-950/50 border border-slate-800/50 rounded-3xl p-4 overflow-auto custom-scrollbar shadow-2xl backdrop-blur-md">
-                            <div class="flex min-w-max items-stretch justify-center" style="height: 1300px;">
-                                <!-- Left Bracket -->
-                                ${renderVerticalMatchColumn('r32', state.bracket.r32, 0, 8)}
-                                ${renderConnector('right', 4)}
-                                ${renderVerticalMatchColumn('r16', state.bracket.r16, 0, 4)}
-                                ${renderConnector('right', 2)}
-                                ${renderVerticalMatchColumn('qf', state.bracket.qf, 0, 2)}
-                                ${renderConnector('right', 1)}
-                                ${renderVerticalMatchColumn('sf', state.bracket.sf, 0, 1)}
-                                
-                                <!-- Center Stage -->
-                                ${renderCenterStage()}
 
-                                <!-- Right Bracket -->
-                                ${renderVerticalMatchColumn('sf', state.bracket.sf, 1, 1)}
-                                ${renderConnector('left', 1)}
-                                ${renderVerticalMatchColumn('qf', state.bracket.qf, 2, 2)}
-                                ${renderConnector('left', 2)}
-                                ${renderVerticalMatchColumn('r16', state.bracket.r16, 4, 4)}
-                                ${renderConnector('left', 4)}
-                                ${renderVerticalMatchColumn('r32', state.bracket.r32, 8, 8)}
+                        <div id="bracket-scroll-container" class="relative w-full flex-grow bg-slate-950/50 border border-slate-800/50 rounded-3xl p-4 overflow-auto custom-scrollbar shadow-2xl backdrop-blur-md">
+                            <!-- This box forces the scrollbar to resize cleanly with the scaled child -->
+                            <div id="bracket-sizing-box" class="transition-all duration-75 origin-top-left">
+                                <!-- The wrapper that actually receives the scale transform -->
+                                <div id="bracket-zoom-wrapper" class="flex min-w-max items-stretch justify-center origin-top-left transition-transform duration-75" style="height: 1300px; transform: scale(${state.zoomScale});">
+                                    <!-- Left Bracket -->
+                                    ${renderVerticalMatchColumn('r32', state.bracket.r32, 0, 8)}
+                                    ${renderConnector('right', 4)}
+                                    ${renderVerticalMatchColumn('r16', state.bracket.r16, 0, 4)}
+                                    ${renderConnector('right', 2)}
+                                    ${renderVerticalMatchColumn('qf', state.bracket.qf, 0, 2)}
+                                    ${renderConnector('right', 1)}
+                                    ${renderVerticalMatchColumn('sf', state.bracket.sf, 0, 1)}
+                                    
+                                    <!-- Center Stage -->
+                                    ${renderCenterStage()}
+
+                                    <!-- Right Bracket -->
+                                    ${renderVerticalMatchColumn('sf', state.bracket.sf, 1, 1)}
+                                    ${renderConnector('left', 1)}
+                                    ${renderVerticalMatchColumn('qf', state.bracket.qf, 2, 2)}
+                                    ${renderConnector('left', 2)}
+                                    ${renderVerticalMatchColumn('r16', state.bracket.r16, 4, 4)}
+                                    ${renderConnector('left', 4)}
+                                    ${renderVerticalMatchColumn('r32', state.bracket.r32, 8, 8)}
+                                </div>
                             </div>
                         </div>
                     </div>
                 `;
             }
 
-            // Restore Scroll perfectly using animation frame to ensure DOM is fully repainted first
+            // Restore Scroll perfectly and setup Zoom Listeners
             requestAnimationFrame(() => {
+                if (state.stage === 'knockout') {
+                    window.updateZoom(state.zoomScale || 1); // Trigger an immediate visual snap
+                    bindZoomEvents();
+                }
+
                 if (intentionalScrollReset) {
                     window.scrollTo(0, 0);
                     const newScroll = document.getElementById('bracket-scroll-container');
                     if (newScroll) {
-                        // Center the view horizontally
+                        // Center the view horizontally by default when brackets generate
                         newScroll.scrollLeft = (newScroll.scrollWidth - newScroll.clientWidth) / 2;
                         newScroll.scrollTop = 0;
                     }
