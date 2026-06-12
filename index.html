@@ -53,14 +53,16 @@
 
         @media print {
             @page {
-                size: landscape;
-                margin: 0;
+                size: a4 landscape;
+                margin: 0.5cm;
             }
 
             body {
                 background-color: white !important;
                 color: black !important;
-                overflow: visible !important;
+                overflow: hidden !important;
+                margin: 0;
+                padding: 0;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }
@@ -70,10 +72,7 @@
             }
 
             #print-container {
-                display: flex !important;
-                min-height: 100vh;
-                align-items: center;
-                justify-content: center;
+                display: block !important;
             }
         }
 
@@ -87,7 +86,7 @@
 
 <body class="selection:bg-blue-500 selection:text-white antialiased bg-slate-950">
 
-    <!-- Main Content Container -->
+    <!-- Main Content Container: Using 100dvh prevents mobile address bar clipping -->
     <main id="app-container" class="min-h-[100dvh] h-[100dvh] w-full flex flex-col">
         <div class="flex items-center justify-center h-full">
             <div class="animate-spin text-5xl">⚽</div>
@@ -185,6 +184,24 @@
             } else return;
 
             setState({ groupSelections: { ...state.groupSelections, [groupName]: newSelection } });
+        };
+
+        window.handleThirdPlaceClick = (teamId) => {
+            const current = state.thirdPlaces;
+            let newThirds;
+            if (current.includes(teamId)) {
+                newThirds = current.filter(t => t !== teamId);
+            } else if (current.length < 8) {
+                newThirds = [...current, teamId];
+            } else return;
+
+            setState({ thirdPlaces: newThirds });
+        };
+
+        window.proceedToThirds = () => {
+            groupScrollMemY = 0;
+            intentionalScrollReset = true;
+            setState({ stage: 'thirds' });
         };
 
         window.generateBracket = () => {
@@ -379,6 +396,7 @@
                     </div>
                     
                     <div class="flex flex-col items-center justify-center w-full flex-1 relative">
+                        <h3 class="text-[10px] font-bold text-gray-500 uppercase mb-1 absolute -top-5">Final</h3>
                         ${renderPrintCard(finalMatch, 'final')}
                     </div>
                     
@@ -390,8 +408,9 @@
             `;
 
             printContainer.innerHTML = `
-                <div class="w-full flex flex-col p-6 bg-white text-black font-sans box-border mx-auto" style="width: 297mm; height: 200mm;">
-                    <div class="flex-grow flex items-stretch justify-center w-full pt-4">
+                <div class="w-full flex flex-col p-4 bg-white text-black font-sans box-border mx-auto" style="width: 287mm; height: 190mm; overflow: hidden;">
+                    <h1 class="text-2xl font-black text-center mb-2 mt-1 text-gray-900 uppercase tracking-widest">FIFA World Cup 2026 Prediction</h1>
+                    <div class="flex-grow flex items-stretch justify-center w-full">
                         ${renderPrintCol(r32L, true, 'r32')}
                         ${renderPrintConnectors(4, true)}
                         ${renderPrintCol(r16L, true, 'r16')}
@@ -415,6 +434,7 @@
                 </div>
             `;
 
+            // Allow the DOM to securely render the printable hidden div before capturing it
             setTimeout(() => window.print(), 100);
         };
 
