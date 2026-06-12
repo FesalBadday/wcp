@@ -79,23 +79,9 @@
 
 <body class="selection:bg-blue-500 selection:text-white antialiased bg-slate-950">
 
-    <!-- Header -->
-    <header
-        class="bg-slate-900/80 backdrop-blur-md text-white p-4 border-b border-slate-800/50 flex justify-between items-center sticky top-0 z-40 shadow-lg">
-        <div class="flex items-center space-x-3">
-            <div
-                class="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-700 rounded-lg flex items-center justify-center text-lg shadow-inner">
-                🏆</div>
-            <h1
-                class="text-xl font-bold tracking-tight hidden sm:block bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-teal-300">
-                World Cup '26</h1>
-        </div>
-        <div id="header-actions"></div>
-    </header>
-
     <!-- Main Content Container -->
-    <main id="app-container" class="min-h-[calc(100vh-64px)]">
-        <div class="flex items-center justify-center h-[calc(100vh-64px)]">
+    <main id="app-container" class="min-h-screen">
+        <div class="flex items-center justify-center h-screen">
             <div class="animate-spin text-5xl">⚽</div>
         </div>
     </main>
@@ -134,7 +120,6 @@
             groupSelections: {},
             thirdPlaces: [],
             bracket: null,
-            resetConfirm: false,
             zoomScale: 1 // Track zoom memory globally
         };
 
@@ -177,16 +162,6 @@
         }
 
         // Actions
-        window.handleReset = () => {
-            if (state.resetConfirm) {
-                intentionalScrollReset = true;
-                setState({ groupSelections: {}, thirdPlaces: [], bracket: null, stage: 'groups', resetConfirm: false, zoomScale: 1 });
-            } else {
-                setState({ resetConfirm: true });
-                setTimeout(() => { if (state.resetConfirm) setState({ resetConfirm: false }); }, 3000);
-            }
-        };
-
         window.handleGroupTeamClick = (groupName, teamId) => {
             const current = state.groupSelections[groupName] || [];
             let newSelection;
@@ -542,7 +517,6 @@
 
         // Main Render Cycle
         function renderApp() {
-            const headerActions = document.getElementById('header-actions');
             const container = document.getElementById('app-container');
 
             // Snapshot Scroll state before re-rendering DOM
@@ -556,21 +530,10 @@
                 bracketScrollY = existingScroll.scrollTop;
             }
 
-            if (state.stage !== 'groups') {
-                headerActions.innerHTML = `
-                    <button onclick="window.handleReset()" class="text-xs px-4 py-1.5 rounded-md transition-all font-bold border ${state.resetConfirm ? 'bg-red-600 border-red-500 text-white animate-pulse' : 'bg-slate-800/50 text-slate-300 border-slate-700/50 hover:bg-slate-700/50'}">
-                        ${state.resetConfirm ? "Sure?" : "Reset"}
-                    </button>`;
-            } else {
-                headerActions.innerHTML = '';
-            }
-
             if (state.stage === 'groups') {
                 const isGroupsComplete = Object.keys(GROUPS).every(g => (state.groupSelections[g] || []).length === 2);
                 let groupsHtml = `
-                    <div class="p-4 max-w-md mx-auto">
-                        <h2 class="text-2xl font-black mt-2 mb-1 text-center bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-teal-300 tracking-tight">Group Stage</h2>
-                        <p class="text-slate-400 text-center mb-6 text-sm font-medium">Select the 1st and 2nd place teams</p>
+                    <div class="p-4 max-w-md mx-auto pt-8">
                 `;
 
                 for (const g in GROUPS) {
@@ -616,9 +579,7 @@
             else if (state.stage === 'thirds') {
                 const totalSelected = state.thirdPlaces.length;
                 let thirdsHtml = `
-                    <div class="p-4 max-w-md mx-auto">
-                        <h2 class="text-2xl font-black mt-2 mb-1 text-center text-purple-400 tracking-tight">Wildcards</h2>
-                        <p class="text-slate-400 text-center mb-6 text-sm font-medium">Select EXACTLY 8 third-placed teams</p>
+                    <div class="p-4 max-w-md mx-auto pt-8">
                         
                         <div class="flex justify-between items-center mb-6 bg-slate-800/80 p-4 rounded-2xl border border-slate-700/80 shadow-sm backdrop-blur-sm">
                              <span class="font-bold text-slate-300">Selected:</span>
@@ -660,15 +621,8 @@
 
             else if (state.stage === 'knockout' && state.bracket) {
                 container.innerHTML = `
-                    <div class="p-4 w-full h-full flex flex-col relative">
-                        <div class="text-center mb-4 flex-shrink-0">
-                            <h2 class="text-3xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-teal-300 tracking-tight uppercase">Knockout Stage</h2>
-                            <p class="text-slate-400 text-xs sm:text-sm font-medium mt-1">
-                                Pinch to zoom out or scroll. Tap a team to advance them!
-                            </p>
-                        </div>
-
-                        <div id="bracket-scroll-container" class="relative w-full flex-grow bg-slate-950/50 border border-slate-800/50 rounded-3xl p-4 overflow-auto custom-scrollbar shadow-2xl backdrop-blur-md">
+                    <div class="w-full h-screen flex flex-col relative">
+                        <div id="bracket-scroll-container" class="relative w-full flex-grow overflow-auto custom-scrollbar">
                             <!-- This box forces the scrollbar to resize cleanly with the scaled child -->
                             <div id="bracket-sizing-box" class="transition-all duration-75 origin-top-left">
                                 <!-- The wrapper that actually receives the scale transform -->
