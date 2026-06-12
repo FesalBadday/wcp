@@ -50,30 +50,6 @@
             font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             overflow: hidden;
         }
-
-        /* Connector Line Styles */
-        .bracket-line-r {
-            border-right: 2px solid #475569;
-        }
-
-        .bracket-line-l {
-            border-left: 2px solid #475569;
-        }
-
-        .bracket-line-t {
-            border-top: 2px solid #475569;
-        }
-
-        .bracket-line-b {
-            border-bottom: 2px solid #475569;
-        }
-
-        .group:hover .bracket-line-r,
-        .group:hover .bracket-line-l,
-        .group:hover .bracket-line-t,
-        .group:hover .bracket-line-b {
-            border-color: #3b82f6;
-        }
     </style>
 </head>
 
@@ -88,7 +64,7 @@
 
     <!-- App Logic -->
     <script>
-        const STORAGE_KEY = 'fifa-world-cup-2026-data-v5';
+        const STORAGE_KEY = 'fifa-world-cup-2026-data-v6';
 
         // Tournament Data
         const TEAMS = {
@@ -114,15 +90,6 @@
 
         const ROUNDS = ['r32', 'r16', 'qf', 'sf', 'final'];
 
-        // Dynamically configured heights. Adjusted slightly so the Final column fits perfectly without clipping!
-        window.ROUND_HEIGHTS = {
-            'r32': 1800,
-            'r16': 950,
-            'qf': 750,
-            'sf': 750,
-            'final': 750
-        };
-
         // App State
         let state = {
             stage: 'groups',
@@ -135,7 +102,7 @@
         let currentActiveTab = 'r32';
         let groupScrollMemY = 0;
         let bracketScrollMemX = 0;
-        let bracketScrollMemY = 0;
+        let colScrollMemY = {}; // Tracks vertical scroll for each individual knockout section
         let intentionalScrollReset = false;
 
         function saveStateToStorage() {
@@ -172,14 +139,6 @@
             renderApp();
         }
 
-        window.updateBracketHeight = (roundId) => {
-            const wrapper = document.getElementById('bracket-tree-wrapper');
-            if (wrapper) {
-                const targetHeight = window.ROUND_HEIGHTS[roundId] || 1800;
-                wrapper.style.height = `${targetHeight}px`;
-            }
-        };
-
         // Actions
         window.handleGroupTeamClick = (groupName, teamId) => {
             const current = state.groupSelections[groupName] || [];
@@ -209,7 +168,7 @@
             intentionalScrollReset = true;
             currentActiveTab = 'r32';
             bracketScrollMemX = 0;
-            bracketScrollMemY = 0;
+            colScrollMemY = {};
 
             const firsts = Object.keys(GROUPS).map(g => state.groupSelections[g]?.[0]);
             const seconds = Object.keys(GROUPS).map(g => state.groupSelections[g]?.[1]);
@@ -326,19 +285,6 @@
             setState({ bracket: nextBracket });
         };
 
-        window.scrollToRound = (roundId) => {
-            const carousel = document.getElementById('bracket-scroll-container');
-            const col = document.getElementById(`col-${roundId}`);
-            if (carousel && col) {
-                currentActiveTab = roundId;
-                window.updateBracketHeight(roundId);
-
-                // Auto-center horizontally, but ALWAYS snap to the top vertically
-                const scrollLeft = col.offsetLeft - (carousel.clientWidth / 2) + (col.clientWidth / 2);
-                carousel.scrollTo({ left: scrollLeft, top: 0, behavior: 'smooth' });
-            }
-        };
-
         function setupCarouselTracking() {
             const carousel = document.getElementById('bracket-scroll-container');
             if (!carousel) return;
@@ -364,17 +310,16 @@
 
                 if (currentActiveTab !== closestRound) {
                     currentActiveTab = closestRound;
-
-                    window.updateBracketHeight(closestRound);
-
-                    // Ensure vertical scroll smoothly resets to top when swapping rounds via horizontal swipe
-                    carousel.scrollTo({ top: 0, behavior: 'smooth' });
-
                     clearTimeout(saveTimeout);
                     saveTimeout = setTimeout(saveStateToStorage, 300);
                 }
             });
         }
+
+        const getRoundName = (id) => {
+            const names = { 'r32': 'Round of 32', 'r16': 'Round of 16', 'qf': 'Quarter-Finals', 'sf': 'Semi-Finals', 'final': 'Final' };
+            return names[id] || '';
+        };
 
         // Render Sub-components
         const renderTeamRow = (team, isWinner, roundId, matchIndex) => {
@@ -412,23 +357,17 @@
 
         const renderVerticalMatchColumn = (roundId, matchArray, count) => {
             const matchesHtml = matchArray.slice(0, count).map((m, i) => {
-                return `<div class="w-full flex-1 flex flex-col justify-center py-1 sm:py-2 min-h-0 relative transition-all duration-500 ease-in-out">${renderNewMatchCard(m, roundId, i)}</div>`;
+                return `<div class="w-full flex-1 flex flex-col justify-center py-2 relative">${renderNewMatchCard(m, roundId, i)}</div>`;
             }).join('');
 
-            return `<div id="col-${roundId}" class="w-[85vw] sm:w-80 shrink-0 snap-center h-full flex flex-col px-2 transition-all duration-500 ease-in-out">${matchesHtml}</div>`;
+            return `
+                <div id="col-${roundId}" class="w-full shrink-0 snap-center h-full flex flex-col px-4 pt-8 pb-24 overflow-y-auto custom-scrollbar">
+                    <h2 class="text-2xl font-black text-center text-slate-200 mb-6 tracking-tight">${getRoundName(roundId)}</h2>
+                    <div class="w-full max-w-md mx-auto flex-grow flex flex-col">
+                        ${matchesHtml}
+                    </div>
+                </div>`;
         };
-
-        const renderConnector = (count) => {
-            let forksHtml = '';
-            for (let i = 0; i < count; i++) {
-                forksHtml += `
-                    <div class="flex-1 relative w-full group min-h-0 transition-all duration-500 ease-in-out">
-                        <div class="absolute top-[25%] bottom-[25%] w-1/2 bracket-line-r bracket-line-t bracket-line-b transition-colors left-0 rounded-r-xl"></div>
-                        <div class="absolute top-1/2 w-1/2 bracket-line-t transition-colors right-0"></div>
-                    </div>`;
-            }
-            return `<div class="w-8 sm:w-12 flex flex-col shrink-0 h-full transition-all duration-500 ease-in-out">${forksHtml}</div>`;
-        }
 
         const renderFinalColumn = () => {
             const finalMatch = state.bracket.final[0];
@@ -438,20 +377,20 @@
             const bronzeWinner = bronzeMatch.winner ? TEAMS[bronzeMatch.winner.toUpperCase()] : null;
 
             let championHtml = winner ? `
-                <div class="w-full mb-6 z-10 transition-all duration-500 ease-in-out flex-shrink-0">
+                <div class="w-full mb-8 z-10 flex-shrink-0">
                     <div class="bg-gradient-to-b from-slate-900 to-slate-950 border border-yellow-500/30 rounded-2xl p-6 text-center shadow-glow-yellow relative overflow-hidden w-full">
                         <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-yellow-500/10 to-transparent"></div>
                         <h2 class="text-xs font-bold mb-2 tracking-[0.3em] text-yellow-400 uppercase relative z-10">World Champions</h2>
                         <img src="https://flagcdn.com/w160/${winner.code}.png" class="w-32 h-20 mx-auto mb-4 rounded-lg shadow-md border-2 border-yellow-500/40 object-cover relative z-10" alt="Champion Flag" />
                         <h1 class="text-2xl font-black text-white relative z-10">${winner.name}</h1>
                     </div>
-                </div>` : `<h2 class="text-xl font-black text-slate-500 uppercase tracking-[0.2em] text-center w-full mb-6 transition-all duration-500 ease-in-out flex-shrink-0">World Champions</h2>`;
+                </div>` : `<h2 class="text-xl font-black text-slate-500 uppercase tracking-[0.2em] text-center w-full mb-8 flex-shrink-0">World Champions</h2>`;
 
-            const finalMatchHtml = renderNewMatchCard(finalMatch, 'final', 0);
-            const bronzeMatchHtml = renderNewMatchCard(bronzeMatch, 'bronze', 0);
+            const finalMatchHtml = `<div class="w-full flex-1 flex flex-col justify-center py-2 relative">${renderNewMatchCard(finalMatch, 'final', 0)}</div>`;
+            const bronzeMatchHtml = `<div class="w-full flex-1 flex flex-col justify-center py-2 relative">${renderNewMatchCard(bronzeMatch, 'bronze', 0)}</div>`;
 
             let bronzeHtml = bronzeWinner ? `
-                <div class="w-full mt-6 z-10 transition-all duration-500 ease-in-out flex-shrink-0">
+                <div class="w-full mt-8 z-10 flex-shrink-0">
                     <div class="bg-slate-900/80 border border-orange-700/30 rounded-xl p-4 text-center shadow-lg relative overflow-hidden w-full">
                          <h2 class="text-[0.65rem] font-bold mb-3 tracking-[0.2em] text-orange-400 uppercase relative z-10">Bronze Winner</h2>
                          <div class="flex items-center justify-center space-x-4">
@@ -461,23 +400,19 @@
                     </div>
                 </div>` : '';
 
-            // Using Spacer divs (flex-grow) ensures the content centers when height is ample, but allows natural scrolling without top-clipping when constrained
             return `
-                <div id="col-final" class="w-[85vw] sm:w-96 shrink-0 snap-center h-full flex flex-col px-4 relative transition-all duration-500 ease-in-out overflow-y-auto custom-scrollbar">
-                    <div class="flex-grow transition-all duration-500 ease-in-out pointer-events-none"></div>
-                    
-                    <div class="w-full flex flex-col items-center py-6 transition-all duration-500 ease-in-out flex-shrink-0">
+                <div id="col-final" class="w-full shrink-0 snap-center h-full flex flex-col px-4 pt-8 pb-24 overflow-y-auto custom-scrollbar">
+                    <h2 class="text-2xl font-black text-center text-slate-200 mb-6 tracking-tight">Finals & 3rd Place</h2>
+                    <div class="w-full max-w-md mx-auto flex flex-col items-center flex-grow">
                         ${championHtml}
-                        <div class="w-full transition-all duration-500 ease-in-out flex-shrink-0">${finalMatchHtml}</div>
-                        <div class="flex justify-center items-center my-4 sm:my-6 z-10 transition-all duration-500 ease-in-out flex-shrink-0">
+                        ${finalMatchHtml}
+                        <div class="flex justify-center items-center my-6 sm:my-8 z-10 flex-shrink-0">
                             <div class="text-[6rem] sm:text-[7rem] drop-shadow-[0_0_30px_rgba(234,179,8,0.4)] cursor-default select-none">🏆</div>
                         </div>
-                        <div class="w-full transition-all duration-500 ease-in-out flex-shrink-0">${bronzeMatchHtml}</div>
-                        <h2 class="text-xs font-bold mt-5 tracking-[0.2em] text-orange-400 uppercase text-center w-full transition-all duration-500 ease-in-out flex-shrink-0">Bronze Match</h2>
+                        ${bronzeMatchHtml}
+                        <h2 class="text-xs font-bold mt-8 tracking-[0.2em] text-orange-400 uppercase text-center w-full flex-shrink-0">Bronze Match</h2>
                         ${bronzeHtml}
                     </div>
-
-                    <div class="flex-grow transition-all duration-500 ease-in-out pointer-events-none"></div>
                 </div>`;
         }
 
@@ -490,7 +425,11 @@
             if (groupScrollContainerRef) { groupScrollMemY = groupScrollContainerRef.scrollTop; }
             if (bracketScrollContainerRef) {
                 bracketScrollMemX = bracketScrollContainerRef.scrollLeft;
-                bracketScrollMemY = bracketScrollContainerRef.scrollTop;
+                // Store vertical scroll for the active tab only
+                const activeCol = document.getElementById(`col-${currentActiveTab}`);
+                if (activeCol) {
+                    colScrollMemY[currentActiveTab] = activeCol.scrollTop;
+                }
             }
 
             if (state.stage === 'groups') {
@@ -585,30 +524,15 @@
             }
 
             else if (state.stage === 'knockout' && state.bracket) {
-                const activeHeight = window.ROUND_HEIGHTS[currentActiveTab] || 1800;
-
                 container.innerHTML = `
-                    <div class="flex flex-col h-full w-full relative overflow-hidden bg-slate-950">
-                        <!-- Horizontal & Vertical Scrollable Tree with Safe Area Padding Bottom -->
-                        <div id="bracket-scroll-container" class="flex-grow overflow-auto custom-scrollbar snap-x snap-mandatory w-full h-full relative pb-12">
-                            <!-- Outer wrapper uses flexible spacers instead of error-prone 'my-auto' flex centering -->
-                            <div class="flex flex-col min-h-full w-max mx-auto transition-all duration-500 ease-in-out">
-                                <div class="flex-grow pointer-events-none transition-all duration-500"></div>
-                                
-                                <div id="bracket-tree-wrapper" class="flex min-w-max items-stretch px-4 py-8 transition-all duration-500 ease-in-out flex-shrink-0" style="height: ${activeHeight}px;">
-                                    ${renderVerticalMatchColumn('r32', state.bracket.r32, 16)}
-                                    ${renderConnector(8)}
-                                    ${renderVerticalMatchColumn('r16', state.bracket.r16, 8)}
-                                    ${renderConnector(4)}
-                                    ${renderVerticalMatchColumn('qf', state.bracket.qf, 4)}
-                                    ${renderConnector(2)}
-                                    ${renderVerticalMatchColumn('sf', state.bracket.sf, 2)}
-                                    ${renderConnector(1)}
-                                    ${renderFinalColumn()}
-                                </div>
-                                
-                                <div class="flex-grow pointer-events-none transition-all duration-500"></div>
-                            </div>
+                    <div class="flex flex-col h-full w-full relative bg-slate-950">
+                        <!-- Horizontal Scrollable Container (Swipe between rounds) WITHOUT CSS smooth scroll -->
+                        <div id="bracket-scroll-container" class="flex-grow flex overflow-x-auto snap-x snap-mandatory custom-scrollbar w-full h-full relative">
+                            ${renderVerticalMatchColumn('r32', state.bracket.r32, 16)}
+                            ${renderVerticalMatchColumn('r16', state.bracket.r16, 8)}
+                            ${renderVerticalMatchColumn('qf', state.bracket.qf, 4)}
+                            ${renderVerticalMatchColumn('sf', state.bracket.sf, 2)}
+                            ${renderFinalColumn()}
                         </div>
                     </div>
                 `;
@@ -620,8 +544,16 @@
                 if (state.stage === 'knockout') {
                     const carousel = document.getElementById('bracket-scroll-container');
                     if (carousel) {
+                        // Ensure instant scroll restoration without triggering a pan animation
+                        carousel.style.scrollBehavior = 'auto';
                         carousel.scrollLeft = bracketScrollMemX;
-                        carousel.scrollTop = bracketScrollMemY;
+
+                        // Restore precise vertical scroll position for the current round
+                        const activeCol = document.getElementById(`col-${currentActiveTab}`);
+                        if (activeCol && colScrollMemY[currentActiveTab] !== undefined) {
+                            activeCol.style.scrollBehavior = 'auto';
+                            activeCol.scrollTop = colScrollMemY[currentActiveTab];
+                        }
                     }
                 } else {
                     const groupScroll = document.getElementById('group-scroll-container');
@@ -631,8 +563,13 @@
                 }
 
                 if (intentionalScrollReset) {
-                    window.scrollTo(0, 0);
-                    if (state.stage === 'knockout') window.scrollToRound('r32');
+                    if (state.stage === 'knockout') {
+                        const carousel = document.getElementById('bracket-scroll-container');
+                        if (carousel) {
+                            carousel.style.scrollBehavior = 'auto';
+                            carousel.scrollLeft = 0;
+                        }
+                    }
                     intentionalScrollReset = false;
                 }
             });
