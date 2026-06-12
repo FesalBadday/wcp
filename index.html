@@ -87,7 +87,7 @@
 
 <body class="selection:bg-blue-500 selection:text-white antialiased bg-slate-950">
 
-    <!-- Main Content Container: Using 100dvh prevents mobile address bar clipping -->
+    <!-- Main Content Container -->
     <main id="app-container" class="min-h-[100dvh] h-[100dvh] w-full flex flex-col">
         <div class="flex items-center justify-center h-full">
             <div class="animate-spin text-5xl">⚽</div>
@@ -99,7 +99,7 @@
 
     <!-- App Logic -->
     <script>
-        const STORAGE_KEY = 'fifa-world-cup-2026-data-v8';
+        const STORAGE_KEY = 'fifa-world-cup-2026-data-v9';
 
         // Tournament Data
         const TEAMS = {
@@ -124,13 +124,14 @@
         };
 
         const ROUNDS = ['r32', 'r16', 'qf', 'sf', 'final'];
+        window.ROUND_HEIGHTS = { 'r32': 1800, 'r16': 950, 'qf': 750, 'sf': 750, 'final': 750 };
 
         // App State & Memory
         let state = {
             stage: 'groups',
             groupSelections: {},
-            thirdPlaces: [],
-            bracket: null
+            bracket: null,
+            pickingThird: null // { matchIndex: 0 }
         };
 
         let saveTimeout = null;
@@ -144,7 +145,9 @@
         function saveStateToStorage() {
             try {
                 localStorage.setItem(STORAGE_KEY, JSON.stringify({
-                    ...state,
+                    stage: state.stage,
+                    groupSelections: state.groupSelections,
+                    bracket: state.bracket,
                     currentActiveTab
                 }));
             } catch (e) { console.error("Save failed", e); }
@@ -163,7 +166,6 @@
                 if (savedData) {
                     const parsed = JSON.parse(savedData);
                     state.groupSelections = parsed.groupSelections || {};
-                    state.thirdPlaces = parsed.thirdPlaces || [];
                     state.bracket = parsed.bracket || null;
                     state.stage = parsed.stage || 'groups';
                     currentActiveTab = parsed.currentActiveTab || 'r32';
@@ -185,24 +187,6 @@
             setState({ groupSelections: { ...state.groupSelections, [groupName]: newSelection } });
         };
 
-        window.handleThirdPlaceClick = (teamId) => {
-            const current = state.thirdPlaces;
-            let newThirds;
-            if (current.includes(teamId)) {
-                newThirds = current.filter(t => t !== teamId);
-            } else if (current.length < 8) {
-                newThirds = [...current, teamId];
-            } else return;
-
-            setState({ thirdPlaces: newThirds });
-        };
-
-        window.proceedToThirds = () => {
-            groupScrollMemY = 0;
-            intentionalScrollReset = true;
-            setState({ stage: 'thirds' });
-        };
-
         window.generateBracket = () => {
             intentionalScrollReset = true;
             currentActiveTab = 'r32';
@@ -211,29 +195,28 @@
 
             const get1st = (g) => state.groupSelections[g]?.[0];
             const get2nd = (g) => state.groupSelections[g]?.[1];
-            const get3rd = (i) => state.thirdPlaces[i];
 
             // OFFICIAL 2026 FIFA WORLD CUP BRACKET FIXTURE MAPPING
             const r32 = [
                 // Left Side of Bracket (Matches 1-8)
-                { t1: get1st('E'), t2: get3rd(0), winner: null },
-                { t1: get1st('I'), t2: get3rd(1), winner: null },
+                { t1: get1st('E'), t2: null, isThird: true, label: '3rd ABCDF', winner: null },
+                { t1: get1st('I'), t2: null, isThird: true, label: '3rd CDFGH', winner: null },
                 { t1: get2nd('A'), t2: get2nd('B'), winner: null },
                 { t1: get1st('F'), t2: get2nd('C'), winner: null },
                 { t1: get2nd('K'), t2: get2nd('L'), winner: null },
                 { t1: get1st('H'), t2: get2nd('J'), winner: null },
-                { t1: get1st('D'), t2: get3rd(2), winner: null },
-                { t1: get1st('G'), t2: get3rd(3), winner: null },
+                { t1: get1st('D'), t2: null, isThird: true, label: '3rd BEFIJ', winner: null },
+                { t1: get1st('G'), t2: null, isThird: true, label: '3rd AEHIJ', winner: null },
 
                 // Right Side of Bracket (Matches 9-16)
                 { t1: get1st('C'), t2: get2nd('F'), winner: null },
                 { t1: get2nd('E'), t2: get2nd('I'), winner: null },
-                { t1: get1st('A'), t2: get3rd(4), winner: null },
-                { t1: get1st('L'), t2: get3rd(5), winner: null },
+                { t1: get1st('A'), t2: null, isThird: true, label: '3rd CEFHI', winner: null },
+                { t1: get1st('L'), t2: null, isThird: true, label: '3rd EHIJK', winner: null },
                 { t1: get1st('J'), t2: get2nd('H'), winner: null },
                 { t1: get2nd('D'), t2: get2nd('G'), winner: null },
-                { t1: get1st('B'), t2: get3rd(6), winner: null },
-                { t1: get1st('K'), t2: get3rd(7), winner: null }
+                { t1: get1st('B'), t2: null, isThird: true, label: '3rd EFGIJ', winner: null },
+                { t1: get1st('K'), t2: null, isThird: true, label: '3rd DEIJL', winner: null }
             ];
 
             const bracket = {
@@ -269,37 +252,82 @@
             }
         };
 
+        // Third Place Modal Logic
+        window.openThirdSelector = (matchIndex) => {
+            setState({ pickingThird: { matchIndex } });
+        };
+
+        window.closeThirdSelector = () => {
+            setState({ pickingThird: null });
+        };
+
+        window.selectThird = (matchIndex, teamId) => {
+            const nextBracket = structuredClone(state.bracket);
+            const match = nextBracket.r32[matchIndex];
+
+            if (match.t2 !== teamId) {
+                match.t2 = teamId;
+                if (match.winner) {
+                    match.winner = null;
+                    clearDownstream(nextBracket, 'r32', matchIndex);
+                }
+            }
+            setState({ bracket: nextBracket, pickingThird: null });
+        };
+
         window.triggerPrint = () => {
             const printContainer = document.getElementById('print-container');
 
-            const renderPrintRow = (t, isWinner) => `
-                <div class="flex items-center px-1.5 py-0.5 ${isWinner ? 'bg-gray-200 font-bold text-black' : 'text-gray-700'} text-[9px] leading-normal" style="height: 20px;">
-                    ${t ? `<img src="https://flagcdn.com/w20/${t.code}.png" class="w-3.5 h-2.5 mr-1 border border-gray-300" style="object-fit: cover;" /> <span class="truncate pb-[1px]">${t.name}</span>` : '<span class="text-gray-400 pb-[1px]">TBD</span>'}
-                </div>
-            `;
+            const renderPrintRow = (t, isWinner, isT1, match, roundId) => {
+                let rankHtml = '';
+                if (roundId === 'r32' && t) {
+                    let rankNum = '';
+                    let groupLetter = '';
+                    for (const g in state.groupSelections) {
+                        const idx = (state.groupSelections[g] || []).indexOf(t.code.toUpperCase());
+                        if (idx === 0) { rankNum = '1'; groupLetter = g; }
+                        else if (idx === 1) { rankNum = '2'; groupLetter = g; }
+                        else if (idx === 2) { rankNum = '3'; groupLetter = g; }
+                    }
+                    if (rankNum) {
+                        rankHtml = `<span class="ml-1 shrink-0 text-[7px] font-bold text-gray-500 bg-gray-100 px-1 py-0.5 rounded border border-gray-200 leading-none">${rankNum}${groupLetter}</span>`;
+                    }
+                }
 
-            const renderPrintCard = (match) => {
-                const t1 = match.t1 ? TEAMS[match.t1.toUpperCase()] : null;
-                const t2 = match.t2 ? TEAMS[match.t2.toUpperCase()] : null;
                 return `
-                    <div class="border border-gray-400 rounded bg-white overflow-hidden shadow-sm mx-auto" style="width: 95px;">
-                        ${renderPrintRow(t1, match.winner === match.t1)}
-                        <div class="h-px bg-gray-300 w-full"></div>
-                        ${renderPrintRow(t2, match.winner === match.t2)}
+                    <div class="flex items-center px-1.5 py-0.5 ${isWinner ? 'bg-gray-200 font-bold text-black' : 'text-gray-700'} text-[9px] leading-normal" style="height: 20px;">
+                        ${t ? `
+                            <img src="https://flagcdn.com/w20/${t.code}.png" class="w-3.5 h-2.5 mr-1 border border-gray-300 shrink-0" style="object-fit: cover;" /> 
+                            <div class="flex-1 flex items-center min-w-0">
+                                <span class="truncate pb-[1px]">${t.name}</span>
+                                ${rankHtml}
+                            </div>
+                        ` : `<span class="text-gray-400 pb-[1px] font-medium">${(!isT1 && match && match.isThird) ? match.label : 'TBD'}</span>`}
                     </div>
                 `;
             };
 
-            const renderPrintCol = (matches, isLeft) => {
+            const renderPrintCard = (match, roundId) => {
+                const t1 = match.t1 ? TEAMS[match.t1.toUpperCase()] : null;
+                const t2 = match.t2 ? TEAMS[match.t2.toUpperCase()] : null;
+                return `
+                    <div class="border border-gray-400 rounded bg-white overflow-hidden shadow-sm mx-auto" style="width: 95px;">
+                        ${renderPrintRow(t1, match.winner === match.t1, true, match, roundId)}
+                        <div class="h-px bg-gray-300 w-full"></div>
+                        ${renderPrintRow(t2, match.winner === match.t2, false, match, roundId)}
+                    </div>
+                `;
+            };
+
+            const renderPrintCol = (matches, isLeft, roundId) => {
                 const html = matches.map(m => `
                     <div class="flex-1 flex flex-col justify-center relative z-10 w-full">
-                        ${renderPrintCard(m)}
+                        ${renderPrintCard(m, roundId)}
                     </div>
                 `).join('');
                 return `<div class="flex flex-col shrink-0 h-full w-[100px]">${html}</div>`;
             };
 
-            // Fully functional connecting lines for the print view!
             const renderPrintConnectors = (count, isLeft, isStraight = false) => {
                 let html = '';
                 for (let i = 0; i < count; i++) {
@@ -325,7 +353,6 @@
                 return `<div class="w-4 flex flex-col shrink-0 h-full">${html}</div>`;
             };
 
-            // Split the bracket mathematically into Left & Right sides for printing
             const r32L = state.bracket.r32.slice(0, 8);
             const r32R = state.bracket.r32.slice(8, 16);
             const r16L = state.bracket.r16.slice(0, 4);
@@ -353,12 +380,12 @@
                     
                     <div class="flex flex-col items-center justify-center w-full flex-1 relative">
                         <h3 class="text-[10px] font-bold text-gray-500 uppercase mb-1 absolute -top-5">Final</h3>
-                        ${renderPrintCard(finalMatch)}
+                        ${renderPrintCard(finalMatch, 'final')}
                     </div>
                     
                     <div class="absolute w-full flex flex-col items-center" style="bottom: 8%;">
                         <h3 class="text-[10px] font-bold text-gray-500 uppercase mb-1">Bronze Match</h3>
-                        ${renderPrintCard(bronzeMatch)}
+                        ${renderPrintCard(bronzeMatch, 'bronze')}
                     </div>
                 </div>
             `;
@@ -367,30 +394,29 @@
                 <div class="w-full flex flex-col p-6 bg-white text-black font-sans box-border mx-auto" style="width: 297mm; height: 200mm;">
                     <h1 class="text-3xl font-black text-center mb-6 text-gray-900 uppercase tracking-widest">FIFA World Cup 2026 Prediction</h1>
                     <div class="flex-grow flex items-stretch justify-center w-full">
-                        ${renderPrintCol(r32L, true)}
+                        ${renderPrintCol(r32L, true, 'r32')}
                         ${renderPrintConnectors(4, true)}
-                        ${renderPrintCol(r16L, true)}
+                        ${renderPrintCol(r16L, true, 'r16')}
                         ${renderPrintConnectors(2, true)}
-                        ${renderPrintCol(qfL, true)}
+                        ${renderPrintCol(qfL, true, 'qf')}
                         ${renderPrintConnectors(1, true)}
-                        ${renderPrintCol(sfL, true)}
+                        ${renderPrintCol(sfL, true, 'sf')}
                         ${renderPrintConnectors(1, true, true)}
                         
                         ${centerHtml}
 
                         ${renderPrintConnectors(1, false, true)}
-                        ${renderPrintCol(sfR, false)}
+                        ${renderPrintCol(sfR, false, 'sf')}
                         ${renderPrintConnectors(1, false)}
-                        ${renderPrintCol(qfR, false)}
+                        ${renderPrintCol(qfR, false, 'qf')}
                         ${renderPrintConnectors(2, false)}
-                        ${renderPrintCol(r16R, false)}
+                        ${renderPrintCol(r16R, false, 'r16')}
                         ${renderPrintConnectors(4, false)}
-                        ${renderPrintCol(r32R, false)}
+                        ${renderPrintCol(r32R, false, 'r32')}
                     </div>
                 </div>
             `;
 
-            // Allow the DOM to securely render the printable hidden div before capturing it
             setTimeout(() => window.print(), 100);
         };
 
@@ -458,6 +484,14 @@
             setState({ bracket: nextBracket });
         };
 
+        window.updateBracketHeight = (roundId) => {
+            const wrapper = document.getElementById('bracket-tree-wrapper');
+            if (wrapper) {
+                const targetHeight = window.ROUND_HEIGHTS[roundId] || 1800;
+                wrapper.style.height = `${targetHeight}px`;
+            }
+        };
+
         function setupCarouselTracking() {
             const carousel = document.getElementById('bracket-scroll-container');
             if (!carousel) return;
@@ -484,6 +518,12 @@
 
                     if (currentActiveTab !== closestRound) {
                         currentActiveTab = closestRound;
+
+                        window.updateBracketHeight(closestRound);
+
+                        // Ensure vertical scroll smoothly resets to top when swapping rounds via horizontal swipe
+                        carousel.scrollTo({ top: 0, behavior: 'smooth' });
+
                         clearTimeout(saveTimeout);
                         saveTimeout = setTimeout(saveStateToStorage, 300);
                     }
@@ -497,19 +537,53 @@
         };
 
         // Render Sub-components
-        const renderTeamRow = (team, isWinner, roundId, matchIndex) => {
+        const renderTeamRow = (team, isWinner, roundId, matchIndex, isT1, match) => {
             const bgClass = isWinner ? 'bg-blue-600/20' : 'hover:bg-slate-700/50';
             const textClass = isWinner ? 'text-white font-bold' : 'text-slate-300 font-medium';
             const indicator = isWinner ? `<div class="w-1 h-full bg-blue-500 absolute left-0 top-0"></div>` : '';
 
+            let rankHtml = '';
+            if (roundId === 'r32' && team) {
+                let rankNum = '';
+                let groupLetter = '';
+                for (const g in state.groupSelections) {
+                    const idx = (state.groupSelections[g] || []).indexOf(team.code.toUpperCase());
+                    if (idx === 0) { rankNum = '1'; groupLetter = g; }
+                    else if (idx === 1) { rankNum = '2'; groupLetter = g; }
+                    else if (idx === 2) { rankNum = '3'; groupLetter = g; }
+                }
+                if (rankNum) {
+                    rankHtml = `<span class="ml-2 shrink-0 text-[10px] font-bold text-slate-400 bg-slate-900/50 px-1.5 py-0.5 rounded border border-slate-700/50 leading-none">${rankNum}${groupLetter}</span>`;
+                }
+            }
+
             if (team) {
+                // If it's a 3rd place slot that was already selected, add a tiny swap button so they can change their mind
+                const swapBtn = (!isT1 && match.isThird && roundId === 'r32') ? `
+                    <button onclick="event.stopPropagation(); window.openThirdSelector(${matchIndex})" class="w-8 h-8 flex shrink-0 items-center justify-center bg-slate-700/80 rounded-lg hover:bg-slate-600 text-sm ml-2 z-10 transition-colors shadow-sm border border-slate-600">🔄</button>
+                ` : '';
+
                 return `
                     <div class="relative flex items-center px-4 py-3 cursor-pointer transition-colors ${bgClass}" onclick="window.advanceWinner('${roundId}', ${matchIndex}, '${team.code.toUpperCase()}')">
                         ${indicator}
-                        <img src="https://flagcdn.com/w40/${team.code}.png" class="w-7 h-5 mr-4 rounded shadow-sm object-cover" alt="flag" />
-                        <span class="flex-1 text-[15px] truncate leading-normal pb-[1px] ${textClass}">${team.name}</span>
+                        <img src="https://flagcdn.com/w40/${team.code}.png" class="w-7 h-5 mr-4 shrink-0 rounded shadow-sm object-cover" alt="flag" />
+                        <div class="flex-1 flex items-center min-w-0">
+                            <span class="text-[15px] truncate leading-normal pb-[1px] ${textClass}">${team.name}</span>
+                            ${rankHtml}
+                        </div>
+                        ${swapBtn}
                     </div>`;
             }
+
+            // Render Empty "Select 3rd Place" Button
+            if (!isT1 && match.isThird && roundId === 'r32') {
+                return `
+                    <div class="relative flex items-center justify-center px-4 py-[14px] bg-blue-900/20 hover:bg-blue-800/30 border-t border-b border-blue-800/40 cursor-pointer transition-all border-dashed" onclick="window.openThirdSelector(${matchIndex})">
+                        <span class="text-[13px] font-bold text-blue-400 uppercase tracking-widest">+ Select ${match.label}</span>
+                    </div>`;
+            }
+
+            // Standard empty slot
             return `
                 <div class="relative flex items-center px-4 py-3 bg-slate-800/50">
                     <span class="flex-1 text-[15px] font-medium text-slate-500 ml-11 leading-normal pb-[1px]">TBD</span>
@@ -523,9 +597,9 @@
 
             return `
                 <div class="w-full bg-slate-800/80 backdrop-blur-sm border ${borderClass} rounded-xl overflow-hidden transition-all shadow-md group">
-                    ${renderTeamRow(t1, match.winner === match.t1, roundId, matchIndex)}
+                    ${renderTeamRow(t1, match.winner === match.t1, roundId, matchIndex, true, match)}
                     <div class="h-px bg-slate-700/50 w-full"></div>
-                    ${renderTeamRow(t2, match.winner === match.t2, roundId, matchIndex)}
+                    ${renderTeamRow(t2, match.winner === match.t2, roundId, matchIndex, false, match)}
                 </div>`;
         };
 
@@ -612,6 +686,8 @@
                 const isGroupsComplete = Object.keys(GROUPS).every(g => (state.groupSelections[g] || []).length === 3);
 
                 let groupsHtml = `<div id="group-scroll-container" class="w-full h-full overflow-y-auto custom-scrollbar p-4"><div class="max-w-md mx-auto pt-6 pb-32">`;
+                groupsHtml += `<h2 class="text-3xl font-black mt-2 mb-1 text-center text-blue-400 uppercase tracking-wider">Group Stage</h2>`;
+                groupsHtml += `<p class="text-slate-400 text-center mb-8 text-sm font-medium">Select exactly 3 teams from every group to advance.</p>`;
 
                 for (const g in GROUPS) {
                     const selectionCount = (state.groupSelections[g] || []).length;
@@ -632,7 +708,7 @@
                         if (isSelected) {
                             if (selectedIdx === 0) bgClass = 'bg-blue-600/20 border-blue-500/50 text-white';
                             else if (selectedIdx === 1) bgClass = 'bg-cyan-600/20 border-cyan-500/50 text-white';
-                            else bgClass = 'bg-teal-600/20 border-teal-500/50 text-white';
+                            else bgClass = 'bg-purple-600/20 border-purple-500/50 text-white'; // Third place indicator color
                         }
 
                         groupsHtml += `
@@ -649,8 +725,8 @@
                 if (isGroupsComplete) {
                     groupsHtml += `
                         <div class="mt-8 mb-6">
-                            <button onclick="window.proceedToThirds()" class="w-full flex justify-center items-center bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold py-4 rounded-xl shadow-glow-blue transition-all">
-                                Continue to Wildcards <span class="ml-2">➡️</span>
+                            <button onclick="window.generateBracket()" class="w-full flex justify-center items-center bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold py-4 rounded-xl shadow-glow-blue transition-all">
+                                Generate Knockout Bracket <span class="ml-2 text-xl">🚀</span>
                             </button>
                         </div>
                     `;
@@ -699,7 +775,7 @@
             }
 
             else if (state.stage === 'knockout' && state.bracket) {
-                container.innerHTML = `
+                let html = `
                     <div class="flex flex-col h-full w-full relative bg-slate-950">
                         <div id="bracket-scroll-container" class="flex-grow flex overflow-x-auto snap-x snap-mandatory custom-scrollbar w-full h-full relative">
                             ${renderVerticalMatchColumn('r32', state.bracket.r32, 16)}
@@ -711,7 +787,50 @@
                     </div>
                 `;
 
-                setupCarouselTracking();
+                // Add Third Place Picker Modal UI if it is active!
+                if (state.pickingThird !== null) {
+                    const matchIndex = state.pickingThird.matchIndex;
+                    const match = state.bracket.r32[matchIndex];
+                    const assigned = state.bracket.r32.map(m => m.isThird ? m.t2 : null).filter(Boolean);
+                    const allThirds = Object.keys(GROUPS).map(g => state.groupSelections[g]?.[2]).filter(Boolean);
+
+                    let thirdsListHtml = '';
+                    allThirds.forEach(teamId => {
+                        const team = TEAMS[teamId];
+                        const isAssigned = assigned.includes(teamId) && match.t2 !== teamId;
+                        const bg = isAssigned ? 'bg-slate-800/50 opacity-40 cursor-not-allowed' : 'bg-slate-800 hover:bg-slate-700 cursor-pointer border-slate-600 hover:border-blue-500';
+                        const onclick = isAssigned ? '' : `onclick="window.selectThird(${matchIndex}, '${teamId}')"`;
+
+                        thirdsListHtml += `
+                            <div class="flex items-center p-3 rounded-xl border transition-all ${bg}" ${onclick}>
+                                <img src="https://flagcdn.com/w40/${team.code}.png" class="w-8 h-5 mr-4 rounded shadow-sm object-cover" />
+                                <span class="flex-1 font-bold text-[15px] text-slate-200 leading-normal pb-[1px]">${team.name}</span>
+                                ${isAssigned ? '<span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Assigned</span>' : ''}
+                            </div>
+                        `;
+                    });
+
+                    html += `
+                        <div class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                            <div class="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onclick="window.closeThirdSelector()"></div>
+                            <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden flex flex-col relative z-10 animate-in fade-in zoom-in duration-200">
+                                <div class="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-850">
+                                    <div>
+                                        <h3 class="text-lg font-black text-white leading-tight">Select Opponent</h3>
+                                        <p class="text-[11px] font-bold text-blue-400 uppercase tracking-widest mt-0.5">${match.label}</p>
+                                    </div>
+                                    <button onclick="window.closeThirdSelector()" class="w-8 h-8 flex items-center justify-center rounded-full bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors">✕</button>
+                                </div>
+                                <div class="p-4 max-h-[60vh] overflow-y-auto custom-scrollbar flex flex-col space-y-2.5">
+                                    ${thirdsListHtml}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                container.innerHTML = html;
+                if (!state.pickingThird) setupCarouselTracking();
             }
 
             // Restore Scroll perfectly
