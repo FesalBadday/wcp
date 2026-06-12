@@ -166,7 +166,7 @@
             const current = state.groupSelections[groupName] || [];
             let newSelection;
             if (current.includes(teamId)) newSelection = current.filter(t => t !== teamId);
-            else if (current.length < 2) newSelection = [...current, teamId];
+            else if (current.length < 3) newSelection = [...current, teamId]; // Now allows 3 selections (1st, 2nd, 3rd)
             else return;
             setState({ groupSelections: { ...state.groupSelections, [groupName]: newSelection } });
         };
@@ -531,7 +531,7 @@
             }
 
             if (state.stage === 'groups') {
-                const isGroupsComplete = Object.keys(GROUPS).every(g => (state.groupSelections[g] || []).length === 2);
+                const isGroupsComplete = Object.keys(GROUPS).every(g => (state.groupSelections[g] || []).length === 3);
                 let groupsHtml = `
                     <div class="p-4 max-w-md mx-auto pt-8">
                 `;
@@ -542,7 +542,7 @@
                         <div class="bg-slate-800/60 p-3 rounded-2xl border border-slate-700/80 mb-4 shadow-sm backdrop-blur-sm">
                             <div class="flex items-center justify-between mb-3 border-b border-slate-700/80 pb-2 px-1">
                                 <h3 class="text-lg font-bold text-slate-200">Group ${g}</h3>
-                                <span class="text-xs text-slate-400 font-bold bg-slate-900/50 px-2 py-1 rounded">${selectionCount}/2 Selected</span>
+                                <span class="text-xs text-slate-400 font-bold bg-slate-900/50 px-2 py-1 rounded">${selectionCount}/3 Selected</span>
                             </div>
                             <div class="flex flex-col space-y-1.5">
                     `;
@@ -550,7 +550,7 @@
                         const team = TEAMS[teamId];
                         const selectedIdx = (state.groupSelections[g] || []).indexOf(teamId);
                         const isSelected = selectedIdx !== -1;
-                        const bgClass = isSelected ? (selectedIdx === 0 ? 'bg-blue-600/20 border-blue-500/50 text-white' : 'bg-cyan-600/20 border-cyan-500/50 text-white') : 'bg-slate-800/80 border-slate-700/50 text-slate-300 hover:bg-slate-700/80';
+                        const bgClass = isSelected ? (selectedIdx === 0 ? 'bg-blue-600/20 border-blue-500/50 text-white' : (selectedIdx === 1 ? 'bg-cyan-600/20 border-cyan-500/50 text-white' : 'bg-teal-600/20 border-teal-500/50 text-white')) : 'bg-slate-800/80 border-slate-700/50 text-slate-300 hover:bg-slate-700/80';
 
                         groupsHtml += `
                             <div class="flex items-center p-3 rounded-xl border cursor-pointer transition-all ${bgClass}" onclick="window.handleGroupTeamClick('${g}', '${teamId}')">
@@ -590,10 +590,10 @@
                         <div class="grid grid-cols-2 gap-2 mb-6">
                 `;
 
-                const availableThirds = Object.keys(GROUPS).flatMap(g => {
+                const availableThirds = Object.keys(GROUPS).map(g => {
                     const selected = state.groupSelections[g] || [];
-                    return GROUPS[g].filter(t => !selected.includes(t));
-                });
+                    return selected[2]; // Specifically grab the 3rd place team from each group
+                }).filter(Boolean); // Filter out any undefined just in case
 
                 availableThirds.forEach(teamId => {
                     const team = TEAMS[teamId];
