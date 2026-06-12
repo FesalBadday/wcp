@@ -64,7 +64,7 @@
 
     <!-- App Logic -->
     <script>
-        const STORAGE_KEY = 'fifa-world-cup-2026-data-v6';
+        const STORAGE_KEY = 'fifa-world-cup-2026-data-v7';
 
         // Tournament Data
         const TEAMS = {
@@ -90,7 +90,7 @@
 
         const ROUNDS = ['r32', 'r16', 'qf', 'sf', 'final'];
 
-        // App State
+        // App State & Memory
         let state = {
             stage: 'groups',
             groupSelections: {},
@@ -102,17 +102,15 @@
         let currentActiveTab = 'r32';
         let groupScrollMemY = 0;
         let bracketScrollMemX = 0;
-        let colScrollMemY = {}; // Tracks vertical scroll for each individual knockout section
+        let colScrollMemY = {};
         let intentionalScrollReset = false;
 
+        // Utilities
         function saveStateToStorage() {
             try {
                 localStorage.setItem(STORAGE_KEY, JSON.stringify({
-                    groupSelections: state.groupSelections,
-                    thirdPlaces: state.thirdPlaces,
-                    bracket: state.bracket,
-                    stage: state.stage,
-                    currentActiveTab: currentActiveTab
+                    ...state,
+                    currentActiveTab
                 }));
             } catch (e) { console.error("Save failed", e); }
         }
@@ -139,22 +137,28 @@
             renderApp();
         }
 
-        // Actions
+        // Event Actions
         window.handleGroupTeamClick = (groupName, teamId) => {
             const current = state.groupSelections[groupName] || [];
             let newSelection;
-            if (current.includes(teamId)) newSelection = current.filter(t => t !== teamId);
-            else if (current.length < 3) newSelection = [...current, teamId];
-            else return;
+            if (current.includes(teamId)) {
+                newSelection = current.filter(t => t !== teamId);
+            } else if (current.length < 3) {
+                newSelection = [...current, teamId];
+            } else return;
+
             setState({ groupSelections: { ...state.groupSelections, [groupName]: newSelection } });
         };
 
         window.handleThirdPlaceClick = (teamId) => {
             const current = state.thirdPlaces;
             let newThirds;
-            if (current.includes(teamId)) newThirds = current.filter(t => t !== teamId);
-            else if (current.length < 8) newThirds = [...current, teamId];
-            else return;
+            if (current.includes(teamId)) {
+                newThirds = current.filter(t => t !== teamId);
+            } else if (current.length < 8) {
+                newThirds = [...current, teamId];
+            } else return;
+
             setState({ thirdPlaces: newThirds });
         };
 
@@ -170,8 +174,9 @@
             bracketScrollMemX = 0;
             colScrollMemY = {};
 
-            const firsts = Object.keys(GROUPS).map(g => state.groupSelections[g]?.[0]);
-            const seconds = Object.keys(GROUPS).map(g => state.groupSelections[g]?.[1]);
+            const getSelection = (index) => Object.keys(GROUPS).map(g => state.groupSelections[g]?.[index]);
+            const firsts = getSelection(0);
+            const seconds = getSelection(1);
 
             const r32 = [
                 { t1: firsts[0], t2: state.thirdPlaces[0], winner: null },
@@ -200,12 +205,14 @@
                 final: Array.from({ length: 1 }, () => ({ t1: null, t2: null, winner: null })),
                 bronze: Array.from({ length: 1 }, () => ({ t1: null, t2: null, winner: null }))
             };
+
             setState({ bracket, stage: 'knockout' });
         };
 
         const clearDownstream = (bracketMut, fromRound, matchIndex) => {
             const startIdx = ROUNDS.indexOf(fromRound);
             let currIdx = matchIndex;
+
             for (let i = startIdx; i < ROUNDS.length; i++) {
                 const r = ROUNDS[i];
                 bracketMut[r][currIdx].winner = null;
@@ -224,21 +231,23 @@
         };
 
         window.triggerConfetti = () => {
-            var duration = 4 * 1000;
-            var animationEnd = Date.now() + duration;
-            var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 99999 };
-            function randomInRange(min, max) { return Math.random() * (max - min) + min; }
-            var interval = setInterval(function () {
-                var timeLeft = animationEnd - Date.now();
+            const duration = 4000;
+            const animationEnd = Date.now() + duration;
+            const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 99999 };
+            const randomInRange = (min, max) => Math.random() * (max - min) + min;
+
+            const interval = setInterval(() => {
+                const timeLeft = animationEnd - Date.now();
                 if (timeLeft <= 0) return clearInterval(interval);
-                var particleCount = 50 * (timeLeft / duration);
+
+                const particleCount = 50 * (timeLeft / duration);
                 confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } });
                 confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } });
             }, 250);
         };
 
         window.advanceWinner = (round, matchIndex, teamId) => {
-            const nextBracket = JSON.parse(JSON.stringify(state.bracket));
+            const nextBracket = structuredClone(state.bracket);
             const currentMatch = nextBracket[round][matchIndex];
             const oldWinner = state.bracket[round][matchIndex].winner;
 
@@ -248,7 +257,7 @@
             const roundIdx = ROUNDS.indexOf(round);
 
             if (roundIdx >= 0 && roundIdx < ROUNDS.length - 1) {
-                let nextRound = ROUNDS[roundIdx + 1];
+                const nextRound = ROUNDS[roundIdx + 1];
                 const nextMatchIndex = Math.floor(matchIndex / 2);
                 const isT1 = matchIndex % 2 === 0;
                 const nextMatch = nextBracket[nextRound][nextMatchIndex];
@@ -279,7 +288,7 @@
             }
 
             if (round === 'final' && oldWinner !== teamId) {
-                setTimeout(() => window.triggerConfetti(), 100);
+                setTimeout(window.triggerConfetti, 100);
             }
 
             setState({ bracket: nextBracket });
@@ -289,31 +298,33 @@
             const carousel = document.getElementById('bracket-scroll-container');
             if (!carousel) return;
 
+            let isScrolling;
             carousel.addEventListener('scroll', () => {
-                const rounds = ['r32', 'r16', 'qf', 'sf', 'final'];
-                let closestRound = rounds[0];
-                let minDiff = Infinity;
+                window.clearTimeout(isScrolling);
+                isScrolling = setTimeout(() => {
+                    let closestRound = ROUNDS[0];
+                    let minDiff = Infinity;
+                    const carouselCenter = carousel.scrollLeft + (carousel.clientWidth / 2);
 
-                const carouselCenter = carousel.scrollLeft + (carousel.clientWidth / 2);
-
-                rounds.forEach(r => {
-                    const col = document.getElementById(`col-${r}`);
-                    if (col) {
-                        const colCenter = col.offsetLeft + (col.clientWidth / 2);
-                        const diff = Math.abs(colCenter - carouselCenter);
-                        if (diff < minDiff) {
-                            minDiff = diff;
-                            closestRound = r;
+                    ROUNDS.forEach(r => {
+                        const col = document.getElementById(`col-${r}`);
+                        if (col) {
+                            const colCenter = col.offsetLeft + (col.clientWidth / 2);
+                            const diff = Math.abs(colCenter - carouselCenter);
+                            if (diff < minDiff) {
+                                minDiff = diff;
+                                closestRound = r;
+                            }
                         }
-                    }
-                });
+                    });
 
-                if (currentActiveTab !== closestRound) {
-                    currentActiveTab = closestRound;
-                    clearTimeout(saveTimeout);
-                    saveTimeout = setTimeout(saveStateToStorage, 300);
-                }
-            });
+                    if (currentActiveTab !== closestRound) {
+                        currentActiveTab = closestRound;
+                        clearTimeout(saveTimeout);
+                        saveTimeout = setTimeout(saveStateToStorage, 300);
+                    }
+                }, 66); // Debounce to prevent heavy layout recalculations
+            }, { passive: true });
         }
 
         const getRoundName = (id) => {
@@ -334,12 +345,11 @@
                         <img src="https://flagcdn.com/w40/${team.code}.png" class="w-7 h-5 mr-4 rounded shadow-sm object-cover" alt="flag" />
                         <span class="flex-1 text-[15px] truncate ${textClass}">${team.name}</span>
                     </div>`;
-            } else {
-                return `
-                    <div class="relative flex items-center px-4 py-3 bg-slate-800/50">
-                        <span class="flex-1 text-[15px] font-medium text-slate-500 ml-11">TBD</span>
-                    </div>`;
             }
+            return `
+                <div class="relative flex items-center px-4 py-3 bg-slate-800/50">
+                    <span class="flex-1 text-[15px] font-medium text-slate-500 ml-11">TBD</span>
+                </div>`;
         };
 
         const renderNewMatchCard = (match, roundId, matchIndex) => {
@@ -356,9 +366,11 @@
         };
 
         const renderVerticalMatchColumn = (roundId, matchArray, count) => {
-            const matchesHtml = matchArray.slice(0, count).map((m, i) => {
-                return `<div class="w-full flex-1 flex flex-col justify-center py-2 relative">${renderNewMatchCard(m, roundId, i)}</div>`;
-            }).join('');
+            const matchesHtml = matchArray.slice(0, count).map((m, i) => `
+                <div class="w-full flex-1 flex flex-col justify-center py-2 relative">
+                    ${renderNewMatchCard(m, roundId, i)}
+                </div>
+            `).join('');
 
             return `
                 <div id="col-${roundId}" class="w-full shrink-0 snap-center h-full flex flex-col px-4 pt-8 pb-24 overflow-y-auto custom-scrollbar">
@@ -376,7 +388,7 @@
             const winner = finalMatch.winner ? TEAMS[finalMatch.winner.toUpperCase()] : null;
             const bronzeWinner = bronzeMatch.winner ? TEAMS[bronzeMatch.winner.toUpperCase()] : null;
 
-            let championHtml = winner ? `
+            const championHtml = winner ? `
                 <div class="w-full mb-8 z-10 flex-shrink-0">
                     <div class="bg-gradient-to-b from-slate-900 to-slate-950 border border-yellow-500/30 rounded-2xl p-6 text-center shadow-glow-yellow relative overflow-hidden w-full">
                         <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-yellow-500/10 to-transparent"></div>
@@ -386,10 +398,7 @@
                     </div>
                 </div>` : `<h2 class="text-xl font-black text-slate-500 uppercase tracking-[0.2em] text-center w-full mb-8 flex-shrink-0">World Champions</h2>`;
 
-            const finalMatchHtml = `<div class="w-full flex-1 flex flex-col justify-center py-2 relative">${renderNewMatchCard(finalMatch, 'final', 0)}</div>`;
-            const bronzeMatchHtml = `<div class="w-full flex-1 flex flex-col justify-center py-2 relative">${renderNewMatchCard(bronzeMatch, 'bronze', 0)}</div>`;
-
-            let bronzeHtml = bronzeWinner ? `
+            const bronzeHtml = bronzeWinner ? `
                 <div class="w-full mt-8 z-10 flex-shrink-0">
                     <div class="bg-slate-900/80 border border-orange-700/30 rounded-xl p-4 text-center shadow-lg relative overflow-hidden w-full">
                          <h2 class="text-[0.65rem] font-bold mb-3 tracking-[0.2em] text-orange-400 uppercase relative z-10">Bronze Winner</h2>
@@ -405,11 +414,11 @@
                     <h2 class="text-2xl font-black text-center text-slate-200 mb-6 tracking-tight">Finals & 3rd Place</h2>
                     <div class="w-full max-w-md mx-auto flex flex-col items-center flex-grow">
                         ${championHtml}
-                        ${finalMatchHtml}
+                        <div class="w-full flex-1 flex flex-col justify-center py-2 relative">${renderNewMatchCard(finalMatch, 'final', 0)}</div>
                         <div class="flex justify-center items-center my-6 sm:my-8 z-10 flex-shrink-0">
                             <div class="text-[6rem] sm:text-[7rem] drop-shadow-[0_0_30px_rgba(234,179,8,0.4)] cursor-default select-none">🏆</div>
                         </div>
-                        ${bronzeMatchHtml}
+                        <div class="w-full flex-1 flex flex-col justify-center py-2 relative">${renderNewMatchCard(bronzeMatch, 'bronze', 0)}</div>
                         <h2 class="text-xs font-bold mt-8 tracking-[0.2em] text-orange-400 uppercase text-center w-full flex-shrink-0">Bronze Match</h2>
                         ${bronzeHtml}
                     </div>
@@ -419,25 +428,21 @@
         // Main Render Cycle
         function renderApp() {
             const container = document.getElementById('app-container');
-            const groupScrollContainerRef = document.getElementById('group-scroll-container');
-            const bracketScrollContainerRef = document.getElementById('bracket-scroll-container');
+            const groupScrollRef = document.getElementById('group-scroll-container');
+            const bracketScrollRef = document.getElementById('bracket-scroll-container');
 
-            if (groupScrollContainerRef) { groupScrollMemY = groupScrollContainerRef.scrollTop; }
-            if (bracketScrollContainerRef) {
-                bracketScrollMemX = bracketScrollContainerRef.scrollLeft;
-                // Store vertical scroll for the active tab only
+            // Save active scrolls before re-rendering
+            if (groupScrollRef) groupScrollMemY = groupScrollRef.scrollTop;
+            if (bracketScrollRef) {
+                bracketScrollMemX = bracketScrollRef.scrollLeft;
                 const activeCol = document.getElementById(`col-${currentActiveTab}`);
-                if (activeCol) {
-                    colScrollMemY[currentActiveTab] = activeCol.scrollTop;
-                }
+                if (activeCol) colScrollMemY[currentActiveTab] = activeCol.scrollTop;
             }
 
             if (state.stage === 'groups') {
                 const isGroupsComplete = Object.keys(GROUPS).every(g => (state.groupSelections[g] || []).length === 3);
-                let groupsHtml = `
-                    <div id="group-scroll-container" class="w-full h-full overflow-y-auto custom-scrollbar p-4">
-                        <div class="max-w-md mx-auto pt-6 pb-32">
-                `;
+
+                let groupsHtml = `<div id="group-scroll-container" class="w-full h-full overflow-y-auto custom-scrollbar p-4"><div class="max-w-md mx-auto pt-6 pb-32">`;
 
                 for (const g in GROUPS) {
                     const selectionCount = (state.groupSelections[g] || []).length;
@@ -453,7 +458,13 @@
                         const team = TEAMS[teamId];
                         const selectedIdx = (state.groupSelections[g] || []).indexOf(teamId);
                         const isSelected = selectedIdx !== -1;
-                        const bgClass = isSelected ? (selectedIdx === 0 ? 'bg-blue-600/20 border-blue-500/50 text-white' : (selectedIdx === 1 ? 'bg-cyan-600/20 border-cyan-500/50 text-white' : 'bg-teal-600/20 border-teal-500/50 text-white')) : 'bg-slate-800/80 border-slate-700/50 text-slate-300 hover:bg-slate-700/80';
+                        let bgClass = 'bg-slate-800/80 border-slate-700/50 text-slate-300 hover:bg-slate-700/80';
+
+                        if (isSelected) {
+                            if (selectedIdx === 0) bgClass = 'bg-blue-600/20 border-blue-500/50 text-white';
+                            else if (selectedIdx === 1) bgClass = 'bg-cyan-600/20 border-cyan-500/50 text-white';
+                            else bgClass = 'bg-teal-600/20 border-teal-500/50 text-white';
+                        }
 
                         groupsHtml += `
                             <div class="flex items-center p-3 rounded-xl border cursor-pointer transition-all ${bgClass}" onclick="window.handleGroupTeamClick('${g}', '${teamId}')">
@@ -475,12 +486,13 @@
                         </div>
                     `;
                 }
-                groupsHtml += `</div></div>`;
-                container.innerHTML = groupsHtml;
+                container.innerHTML = groupsHtml + `</div></div>`;
             }
 
             else if (state.stage === 'thirds') {
                 const totalSelected = state.thirdPlaces.length;
+                const availableThirds = Object.keys(GROUPS).map(g => (state.groupSelections[g] || [])[2]).filter(Boolean);
+
                 let thirdsHtml = `
                     <div id="group-scroll-container" class="w-full h-full overflow-y-auto custom-scrollbar p-4">
                         <div class="max-w-md mx-auto pt-6 pb-32">
@@ -493,11 +505,6 @@
                         </div>
                         <div class="grid grid-cols-2 gap-2 mb-6">
                 `;
-
-                const availableThirds = Object.keys(GROUPS).map(g => {
-                    const selected = state.groupSelections[g] || [];
-                    return selected[2];
-                }).filter(Boolean);
 
                 availableThirds.forEach(teamId => {
                     const team = TEAMS[teamId];
@@ -512,21 +519,19 @@
                     `;
                 });
 
-                thirdsHtml += `</div>
-                    <div class="mt-8 mb-6">
-                        <button ${totalSelected !== 8 ? 'disabled' : ''} onclick="window.generateBracket()" class="w-full flex justify-center items-center font-bold py-4 rounded-xl transition-all ${totalSelected === 8 ? 'bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white shadow-[0_0_15px_rgba(22,163,74,0.3)]' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}">
-                            Generate Bracket <span class="ml-2">🚀</span>
-                        </button>
+                container.innerHTML = thirdsHtml + `
                     </div>
-                </div></div>`;
-
-                container.innerHTML = thirdsHtml;
+                        <div class="mt-8 mb-6">
+                            <button ${totalSelected !== 8 ? 'disabled' : ''} onclick="window.generateBracket()" class="w-full flex justify-center items-center font-bold py-4 rounded-xl transition-all ${totalSelected === 8 ? 'bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white shadow-[0_0_15px_rgba(22,163,74,0.3)]' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}">
+                                Generate Bracket <span class="ml-2">🚀</span>
+                            </button>
+                        </div>
+                    </div></div>`;
             }
 
             else if (state.stage === 'knockout' && state.bracket) {
                 container.innerHTML = `
                     <div class="flex flex-col h-full w-full relative bg-slate-950">
-                        <!-- Horizontal Scrollable Container (Swipe between rounds) WITHOUT CSS smooth scroll -->
                         <div id="bracket-scroll-container" class="flex-grow flex overflow-x-auto snap-x snap-mandatory custom-scrollbar w-full h-full relative">
                             ${renderVerticalMatchColumn('r32', state.bracket.r32, 16)}
                             ${renderVerticalMatchColumn('r16', state.bracket.r16, 8)}
@@ -540,15 +545,14 @@
                 setupCarouselTracking();
             }
 
+            // Restore Scroll perfectly
             requestAnimationFrame(() => {
                 if (state.stage === 'knockout') {
                     const carousel = document.getElementById('bracket-scroll-container');
                     if (carousel) {
-                        // Ensure instant scroll restoration without triggering a pan animation
                         carousel.style.scrollBehavior = 'auto';
                         carousel.scrollLeft = bracketScrollMemX;
 
-                        // Restore precise vertical scroll position for the current round
                         const activeCol = document.getElementById(`col-${currentActiveTab}`);
                         if (activeCol && colScrollMemY[currentActiveTab] !== undefined) {
                             activeCol.style.scrollBehavior = 'auto';
@@ -557,9 +561,7 @@
                     }
                 } else {
                     const groupScroll = document.getElementById('group-scroll-container');
-                    if (groupScroll) {
-                        groupScroll.scrollTop = groupScrollMemY;
-                    }
+                    if (groupScroll) groupScroll.scrollTop = groupScrollMemY;
                 }
 
                 if (intentionalScrollReset) {
